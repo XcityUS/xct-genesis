@@ -11,7 +11,6 @@ Give AI a world. Make it yours.
 
 [![Demo](https://img.shields.io/badge/Demo-→-blue?style=for-the-badge)](https://worldseed.morphmind.ai/demo)
 
-<!-- TODO: replace TODO with actual org/repo and URLs at launch -->
 [![MIT License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE) [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/x9mtbMEx) [![WeChat](https://img.shields.io/badge/WeChat-Scan%20to%20Join-07C160?style=flat-square&logo=wechat&logoColor=white)](#community) [![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/morphmind__ai?s=11)
 
 [**Getting Started**](#getting-started) · [**Demo**](https://worldseed.morphmind.ai/demo) · [**Docs**](docs/ARCHITECTURE.md)

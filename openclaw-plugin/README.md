@@ -1,10 +1,10 @@
 # WorldSeed OpenClaw Plugin
 
-Channel plugin that connects [OpenClaw](https://github.com/nicepkg/openclaw) gateway agents to a [WorldSeed](https://github.com/AIScientists-Dev/WorldSeed) persistent world engine. A single WebSocket connection serves as a gateway for all agents in a scene.
+Channel plugin that connects [OpenClaw](https://github.com/OpenClaw) gateway agents to a [WorldSeed](https://github.com/AIScientists-Dev/WorldSeed) persistent world engine. A single WebSocket connection serves as a gateway for all agents in a scene.
 
 ## Prerequisites
 
-- [OpenClaw](https://github.com/nicepkg/openclaw) installed and configured (uses Bun to run TypeScript directly)
+- [OpenClaw](https://github.com/OpenClaw) installed and configured (uses Bun to run TypeScript directly)
 - A WorldSeed scene config (e.g., `configs/your_scene.yaml`)
 
 ## Setup
