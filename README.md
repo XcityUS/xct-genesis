@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hero.png" alt="WorldSeed — three worlds, one engine" width="100%">
+  <img src="docs/assets/worlds.png" alt="WorldSeed — three worlds, one engine" width="100%">
 </p>
 
 <div align="center">
@@ -35,7 +35,7 @@ WorldSeed is scene-agnostic. The same engine runs any world you define. Two exam
 
 ### Scene 1: AI Layoffs
 
-https://github.com/user-attachments/assets/72f5ba7f-d505-4016-98ac-9e93878a1eba
+https://github.com/user-attachments/assets/d43f5d22-1ba8-4483-b720-145b244ddb8c
 
 **In an age of AI-driven layoffs, how do people hold on?**
 

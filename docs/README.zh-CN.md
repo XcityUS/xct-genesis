@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/hero.png" alt="WorldSeed — 三个世界，一个引擎" width="100%">
+  <img src="assets/worlds.png" alt="WorldSeed — 三个世界，一个引擎" width="100%">
 </p>
 
 <div align="center">
@@ -59,11 +59,11 @@ https://github.com/user-attachments/assets/72f5ba7f-d505-4016-98ac-9e93878a1eba
 **同一个引擎。不同的 YAML。完全不同的世界。**
 
 <p align="center">
-<img src="assets/teahouse_map.png" alt="WorldSeed 茶馆地图" width="720">
+<img src="assets/teahouse_map.zh-CN.png" alt="WorldSeed 茶馆地图" width="720">
 </p>
 
 <p align="center">
-<img src="assets/teahouse_dashboard.png" alt="WorldSeed 完整仪表板，茶馆场景，地图与事件流" width="720">
+<img src="assets/teahouse_dashboard.zh-CN.png" alt="WorldSeed 完整仪表板，茶馆场景，地图与事件流" width="720">
 </p>
 
 **四个间谍，一间茶馆。谁到底在为谁做事？**
@@ -167,8 +167,8 @@ uv run worldseed play configs/my_scene.yaml
     <th align="center">角色肖像</th>
   </tr>
   <tr>
-    <td><img src="assets/world_briefing.png" alt="WorldSeed 世界简报，YAML 渲染出的房间卡片" width="400"></td>
-    <td><img src="assets/onboarding.png" alt="WorldSeed 入场画面，角色肖像与性格卡片" width="400"></td>
+    <td><img src="assets/world_briefing.zh-CN.png" alt="WorldSeed 世界简报，YAML 渲染出的房间卡片" width="400"></td>
+    <td><img src="assets/onboarding.zh-CN.png" alt="WorldSeed 入场画面，角色肖像与性格卡片" width="400"></td>
   </tr>
 </table>
 
