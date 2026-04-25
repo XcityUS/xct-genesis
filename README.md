@@ -6,8 +6,7 @@
 
 # WorldSeed
 
-**Your first AI world.**
-Give AI a world. Make it yours.
+**More is Different: a multi-agent world engine for emergent behavior.**
 
 [![Demo](https://img.shields.io/badge/Demo-→-blue?style=for-the-badge)](https://worldseed.morphmind.ai/demo)
 
@@ -23,9 +22,11 @@ Give AI a world. Make it yours.
 
 ## What is WorldSeed?
 
-A world engine where you describe any scenario (characters, rules, actions, what each one can see) and AI agents inhabit it autonomously. They move in and make their own decisions. You watch from above, intervene, or step in as a character. Same engine runs anything. Every run is a different story. What emerges is never designed.
+WorldSeed is an environment engine for multi-agent worlds. You define the scene, characters, rules, and what each agent can see.
 
-**You seed worlds. Stories grow on their own.**
+Once a run starts, the agents do everything else: decide what to do, talk to each other, deceive, ally, betray. You can watch from above, whisper privately to any agent, or step into a character and play alongside them. The same engine runs any world you define. Every run is different because nobody scripted it.
+
+**Write your rules. Behavior emerges.**
 
 ---
 
@@ -212,4 +213,4 @@ Join the discussion or ask for help:
 
 MIT. See [`LICENSE`](./LICENSE).
 
-WorldSeed is built for anyone who thinks AI agents deserve a world to live in, not just a task to complete. The engine ships with two example scenes, or [create your own](#create-your-world).
+For anyone building multi-agent worlds. Two example scenes ship with the repo, or [create your own](#create-your-world).
