@@ -1,0 +1,12 @@
+# Dataset cache — not worth committing per-branch
+data/
+
+# Python noise
+__pycache__/
+*.pyc
+.venv/
+.uv_cache/
+
+# Run artifacts that don't belong in git history
+*.log
+run.log

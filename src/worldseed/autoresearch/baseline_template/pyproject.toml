@@ -1,0 +1,13 @@
+# Locked dependencies for autoresearch baseline. Agents cannot modify this file.
+# Matches what experiments are allowed to import.
+
+[project]
+name = "autoresearch-baseline"
+version = "0.3.0"
+description = "Small-GPT baseline for autoresearch scene (TinyStories)"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.3",
+    "numpy>=1.26",
+    "sentencepiece>=0.2",
+]

@@ -1,0 +1,378 @@
+export type PilotShape = 'wide' | 'deep' | 'tree' | 'mixed'
+export type PilotStatus = 'chosen' | 'killed' | 'parked'
+export type PilotDeliverableKind = 'paper' | 'pending_result' | 'commit' | 'memo' | 'result_table' | 'artifact' | 'track'
+
+export interface PilotRelation {
+  target: string
+  kind: 'cites' | 'builds_on' | 'supersedes' | 'verifies' | 'derived_from' | 'materialized_by' | 'text_reference'
+  confidence?: 'field' | 'inferred'
+}
+
+export interface PilotVersion {
+  letter: string
+  status: PilotStatus
+  statusLabel: string
+  contentMeta?: string
+  diff?: { summary: string; changes?: Array<{ type: string; text: string }> }
+}
+
+export interface PilotBranch {
+  letter: string
+  title: string
+  kind?: PilotDeliverableKind
+  status: PilotStatus
+  statusLabel: string
+  createdTick?: number
+  parent?: string | null
+  relations?: PilotRelation[]
+  thesis?: string
+  attempts?: string
+  result?: string
+  evidence?: Array<{ line: string; qt?: boolean }>
+  decision?: string
+  content?: string
+  contentMeta?: string
+  reviews?: Array<{ who: string; verdict: string; verdictText: string; quote: string }>
+  diff?: { summary: string; changes: Array<{ type: string; text: string }> }
+  versions?: PilotVersion[]
+}
+
+export interface PilotDataset {
+  eyebrow: string
+  title: string
+  subtitle: string
+  meta: string
+  verdict: {
+    lead: string
+    bullets?: string[]
+    recommend?: string
+    deliverables?: Array<{ icon: string; name: string; meta: string }>
+    actions?: string[]
+  }
+  question: Record<string, string>
+  panel: Array<{ avatar: string; name: string; bio: string }>
+  rules: string[]
+  branchMap: { shape: PilotShape }
+  branches: PilotBranch[]
+  confidence: {
+    tested: string[]
+    untested: string[]
+    next: string[]
+  }
+}
+
+export const PILOT_DATA: Record<string, PilotDataset> = {
+  autoresearch: {
+    eyebrow: 'RUN · 2026-04-26',
+    title: 'Auto研究结果总汇',
+    subtitle: 'Label smoothing 的方案和影响',
+    meta: 'run · 96 ticks · 48m wall',
+    verdict: {
+      lead: '<strong>1 套可合入主线的 baseline 改进方案。</strong>最终选择 LS + Temperature Scaling 组合。',
+      bullets: [
+        '一共试了 7 个并行 hypothesis,跑了 17 个实验,2 篇 paper 走完同行评审',
+        '最终方案 Δ val_loss = -0.04,超出 ±0.02 噪声门槛',
+        '跨 3 seed 复现稳定,dana_ac 独立 verify 通过',
+        '3/3 reviewer 一致 accept,无 contested',
+      ],
+      recommend: '采用 LS + Temperature Scaling 组合作为 baseline 改进,可合入主线训练 pipeline。下一步建议在 50M-param scale 上重跑同配方做 scaling 验证。',
+      deliverables: [
+        { icon: 'P', name: 'paper_004', meta: 'LS+Temp · accepted 3/3\nval_loss 2.46 (Δ -0.04)' },
+        { icon: 'C', name: '复现 commit', meta: 'agent/dana_ac@7a3f2e1\nrunnable on A100' },
+        { icon: 'D', name: 'results.tsv', meta: '17 experiments\n3 seeds each' },
+        { icon: 'M', name: '决策 memo', meta: '为什么不选 standard LS\n(branch A 失败原因)' },
+      ],
+      actions: ['分享链接', '导出 PDF', '复制 paper bibtex'],
+    },
+    question: {
+      Topic: 'Label smoothing 的方案和影响',
+      Scope: '5M-param GPT(4L×4H×256) · TinyStories 130M tokens · A100 80GB · ±0.02 噪声门槛',
+      'Why now': 'baseline val_loss ≈ 2.50,LS 是最常被引用但效果最有争议的小模型 trick',
+    },
+    panel: [
+      { avatar: 'A', name: 'alex_opt', bio: '优化器 + LR schedule 视角(AdamW / Muon / 调度)' },
+      { avatar: 'B', name: 'blair_arch', bio: '架构视角(attention / norm / pos / init)' },
+      { avatar: 'C', name: 'casey_reg', bio: '正则化 + 数据视角(LS / dropout / curriculum)' },
+      { avatar: 'D', name: 'dana_ac', bio: 'Area Chair · 方法论审查 + 复现实验' },
+    ],
+    rules: [
+      '<strong>peer review 强制</strong>:任何 paper 要至少 3 reviewer · 多数共识',
+      '<strong>verify 容忍 ±0.02</strong>:claim 与 verify 重跑差超过此阈值 → contested',
+      '<strong>pending_reviews 非空时 run_experiment 被引擎拒</strong> · 用 GPU 配额换 review 责任',
+      'experiments 默认私有 · 仅在 paper 引用时才公开',
+      'hypothesis 绑定后所有 evidence experiment 必须用同一 hyp_id 提交 · 杜绝事后归因',
+    ],
+    branchMap: { shape: 'wide' },
+    branches: [
+      {
+        letter: 'A',
+        title: 'Branch A · Standard Label Smoothing (α=0.1)',
+        status: 'killed',
+        statusLabel: '✗ Contested',
+        thesis: '经典 LS 应当能稳定降 val_loss · α=0.1 是文献最常用值',
+        attempts: '3 次 experiment(seed=1/2/3) · paper_002 写于 t38',
+        result: 'Δ val_loss 在 -0.02 ~ -0.01 之间 · 跨 seed 不稳定 · 落在噪声门槛内',
+        evidence: [
+          { line: 'exp_001 Δ -0.02 · exp_002 Δ -0.01 · exp_003 Δ -0.02' },
+          { qt: true, line: "blair_arch:'三个 seed 均值 -0.017,与噪声 ±0.02 重叠'" },
+          { qt: true, line: "dana_ac:'casey 自己的 seed 1 是 -0.02,但 dana 复现 seed 4 拿到 +0.00 — verify 失败'" },
+        ],
+        decision: 'verify 复现失败 → contested · 作者(casey_reg)未重写新 paper',
+      },
+      {
+        letter: 'B',
+        title: 'Branch B · Confidence Penalty (替代 LS)',
+        status: 'killed',
+        statusLabel: '✗ Killed',
+        thesis: 'Confidence Penalty 给高置信度 token 加惩罚 · 等效于 soft LS · 但更精细',
+        attempts: '2 次 experiment(seed=1/2) · 未到 paper',
+        result: 'Δ val_loss = -0.01 / +0.00 · 完全噪声范围',
+        evidence: [{ line: 'exp_004 Δ -0.01 · exp_005 Δ +0.00' }],
+        decision: '作者主动放弃 · 不写 paper · 实验保留私有',
+      },
+      {
+        letter: 'C',
+        title: 'Branch C · Dynamic LS (随 epoch decay)',
+        status: 'killed',
+        statusLabel: '✗ Killed',
+        thesis: '训练前期 α 大(防 overfit)· 后期 α → 0(让模型 sharp)· decay 应当比固定 α 更优',
+        attempts: '3 次 experiment(linear decay / exp decay / step decay)· 未到 paper',
+        result: '全部 Δ val_loss > 0(变差)· step decay 最差(+0.02)',
+        evidence: [{ line: 'exp_007 +0.01 · exp_008 +0.02 · exp_009 +0.01' }],
+        decision: "作者放弃 · 留下 'small model 5M 在这个 token budget 下还没到需要 sharpening 的阶段' 这个 insight",
+      },
+      {
+        letter: 'D',
+        title: 'Branch D · LS + Temperature Scaling 组合',
+        status: 'chosen',
+        statusLabel: '✓ Accepted',
+        thesis: 'LS 平滑 logits 分布 + temperature 调整 softmax 锐度 · 两个机制互补 · 应当超出单一 LS 的效果',
+        attempts: '3 次 experiment + 1 次 dana_ac 复现 · paper_004 写于 t72',
+        result: 'Δ val_loss = -0.04(全 3 seeds 一致)· dana_ac 跨 seed 复现得 -0.04 · 通过 verify',
+        evidence: [
+          { line: 'exp_010 Δ -0.04 · exp_011 Δ -0.04 · exp_012 Δ -0.03' },
+          { qt: true, line: "dana_ac review:'我用 seed=4 复现得 -0.04,跟作者一致 · accept'" },
+        ],
+        decision: '3/3 reviewer accept · 进 corpus · 推荐为本次 pilot 最终方案',
+      },
+      {
+        letter: 'E',
+        title: 'Branch E · Token-aware Label Smoothing',
+        status: 'parked',
+        statusLabel: '△ Parked',
+        thesis: '高频 token 少平滑、低频 token 多平滑,希望减少 rare token 过拟合',
+        attempts: '2 次 experiment(seed=1/2) · 未到 paper',
+        result: 'Δ val_loss = -0.01 · rare token bucket 有收益但 overall 不稳',
+        decision: '暂存为后续 token-level analysis 方向 · 本轮不推进',
+      },
+      {
+        letter: 'F',
+        title: 'Branch F · Warmup-tied LS Schedule',
+        status: 'killed',
+        statusLabel: '✗ Killed',
+        thesis: 'LS 强度跟 LR warmup 同步变化,早期稳住 logits,后期释放 sharpness',
+        attempts: '1 次 experiment(seed=1) · 未到 paper',
+        result: 'Δ val_loss = +0.02 · early loss 更平滑但最终退步',
+        decision: '机制和 Dynamic LS 重叠且结果更差 · kill',
+      },
+      {
+        letter: 'G',
+        title: 'Branch G · Class-balanced LS by Frequency Bucket',
+        status: 'parked',
+        statusLabel: '△ Partial',
+        thesis: '按 token frequency bucket 分配 smoothing mass,避免 uniform LS 过度照顾高频 token',
+        attempts: '2 次 experiment(seed=1/2) · 未到 paper',
+        result: 'Δ val_loss = -0.01 ~ -0.00 · bucket recall 改善但 CE 不稳定',
+        decision: '需要更细 eval 才能判断 · 暂停',
+      },
+    ],
+    confidence: {
+      tested: ['7 个 hypothesis · 17 个实验 · 跨 3 seed', 'verify 重跑(dana_ac 独立 seed=4)', 'paper 同行评审 3/3 共识'],
+      untested: ['更大模型(50M / 500M)是否仍 hold', '其他 token budget(< 50M, > 500M)', 'non-TinyStories 数据(自然文本 / 代码)'],
+      next: ['在 50M-param 上重跑 paper_004 配方 → 验证 scaling', "把 branch C 的'dynamic decay'改成 cosine schedule 再试一次", '测 LS+Temp 与 weight decay 调整的相互作用'],
+    },
+  },
+  autoeditor: {
+    eyebrow: 'RUN · 2026-04-27',
+    title: 'Auto文案结果总汇',
+    subtitle: 'Hermes Agent:给龙虾套上了马鞍',
+    meta: 'run · 41 ticks · 9m wall',
+    verdict: {
+      lead: '<strong>4 篇可发布的文案。</strong>即刻、小红书、X 和公众号备用都已成稿。',
+      bullets: ['经过 v1(820字 · 全员退)→ v2(560字 · 残留 AI 抒情味)→ v3(480字 · 极简留白)三轮迭代', 'v3 试读 3 位中 2 位通过(1 位保留意见但未否决),AI 味检测通过', '文风跟你以往作品 79% 相似 · 基于 v3 派生 4 个平台版'],
+      recommend: '主推即刻先在科技圈发酵,小红书版同日跟,X thread 抢英文圈尾巴。即刻发出 6 小时后回流数据,若严肃 AI 圈反响集中,触发反思路线重跑。',
+      deliverables: [
+        { icon: 'J', name: '即刻版', meta: '550 字思考密度\n首句留白 · 不解释' },
+        { icon: 'R', name: '小红书版', meta: "截图友好 + 短句对话体\n封面:'AI 干这事就跟你昨晚一样'" },
+        { icon: 'X', name: 'X thread', meta: '6 推 · 英文版\n首推 hook 已优化' },
+        { icon: 'L', name: '备用长文', meta: "公众号 1800 字\n延伸到'agent 行为不可解释性'" },
+      ],
+      actions: ['分享链接', '导出 PDF', '复制即刻版', '排程发布'],
+    },
+    question: {
+      Topic: 'Hermes Agent 给龙虾套上了马鞍 · 这张图怎么写',
+      Scope: '目标平台:即刻 + 小红书 + X(英文)· 目标受众:科技圈 / 玩梗派 / AI 创作者 · 风格:观察 + 解读 · 不写鸡汤',
+      'Why now': '图昨晚刷屏 · 我手上没截到第一波流量 · 想用解读切个二波',
+    },
+    panel: [
+      { avatar: 'D', name: 'Drafter', bio: '写初稿 · 看不到 critic 反馈' },
+      { avatar: 'R', name: 'Reviser', bio: '拿 directive 改稿 · 中转作者 voice 与反馈' },
+      { avatar: 'P', name: '玩梗派老张', bio: '35 岁 / 科技博主 / timeline 老熟人 · 看图秒解梗' },
+      { avatar: 'A', name: 'AI 味侦察兵', bio: '纯算稿 · 不看作者风格 · 一票否决' },
+    ],
+    rules: ['AI 味侦察兵 + Voice 守门均为一票否决 · 任一红牌即触发 revise', "至少 2/3 persona 标'会读'才能进 final · 硬卡", 'Drafter 物理上看不到 critic 反馈 · 只能从 Reviser 拿 directive'],
+    branchMap: { shape: 'deep' },
+    branches: [
+      {
+        letter: 'v1',
+        title: 'v1 草稿 · 把梗解释 3 次 + 鸡汤结尾',
+        status: 'killed',
+        statusLabel: '✗ 全员退稿',
+        thesis: '想把这个梗解释清楚 + 上升到 AI 哲学高度 + 给读者一个温暖的收束',
+        contentMeta: '820 字 · AI 味红牌 · Voice 黄牌',
+        content: 'Hermes Agent 给龙虾套上了马鞍。这件事第一眼看上去荒诞,但其实背后藏着 AI agent 工作流里一种典型的机制错位。',
+        reviews: [{ who: 'AI 味侦察兵', verdict: 'fail', verdictText: '✗', quote: '解释梗超过 1 句即 AI 味 · 这版解释 3 次' }],
+        decision: '总编 t14 全员退稿 · 让 reviser 改:删大半解释段 · 加共鸣点 · 砍掉鸡汤结尾',
+      },
+      {
+        letter: 'v2',
+        title: 'v2 改稿 · 删大半解释 · 但残留 AI 抒情味',
+        status: 'parked',
+        statusLabel: '△ 1/3 通过',
+        thesis: '保留观察 + 加共鸣点 · 但还想留一句「AI 真相」的抽象总结让文章有重量',
+        contentMeta: '560 字 · 净 -260 字 · AI 味黄牌 · Voice 86%',
+        content: 'Hermes Agent 给龙虾套上了马鞍。\n\n它接到的指令是隐喻 —— 但它当真了,真的找了一张马鞍。',
+        diff: { summary: 'vs v1 · 删 380 字 · 加 120 字 · 净 -260 字', changes: [{ type: 'removed', text: '删掉解释梗和鸡汤结尾' }, { type: 'added', text: '加入具体共鸣例子' }] },
+        decision: '总编 t26 退回再改 · directive:再砍 80 字 · 删抒情排比 · 结尾换开放问句',
+      },
+      {
+        letter: 'v3',
+        title: 'v3 final · 长句掰碎 · 删抒情 · 结尾开放',
+        status: 'chosen',
+        statusLabel: '✓ Final accepted',
+        thesis: '极简留白 · 不归因 · 不下结论 · 把所有判断让给读者',
+        contentMeta: '480 字 · 净 -80 字 · AI 味净 · Voice 79%',
+        content: 'Hermes Agent 给龙虾套上了马鞍。\n\n它接到的是隐喻指令。它当真了。\n\n你笑它的时候,你在笑谁?',
+        diff: { summary: 'vs v2 · 删 80 字 · 长句拆短 · 净 -80 字', changes: [{ type: 'removed', text: '删除抒情排比' }, { type: 'modified', text: '结尾改成开放问句' }] },
+        decision: '总编 t36 接受 v3 · 派 3 平台 critic 基于 v3 独立改写',
+      },
+    ],
+    confidence: {
+      tested: ['3 个 persona 反应', '3 个平台调性适配', 'AI 味 + Voice 守门双签'],
+      untested: ['图本身版权 / 来源', '热度衰减速度', '其他 angle 未跑'],
+      next: ['即刻发出后 6h 互动回流', "若严肃 AI 圈反馈集中 · 触发'agent 行为不可解释性'严肃路线重跑"],
+    },
+  },
+  tree_rag: {
+    eyebrow: 'RUN · 2026-04-27',
+    title: 'RAG调试结果总汇',
+    subtitle: '为什么我们的 RAG 检索质量不稳定',
+    meta: 'run · 78 ticks · 32m wall',
+    verdict: {
+      lead: '<strong>定位到 2 个关键因子。</strong>有效组合是语义切块 + 领域微调 embedding。',
+      bullets: ['切块树:固定大小(✗)/ 语义切块(✓)/ 滑窗(△)', 'embedding 树:小模型(✗)/ 领域微调(✓)', 'query 重写树:HyDE(✗)· 此方向无效'],
+      recommend: '采用语义切块 + 领域微调 embedding 组合上线 · 切块大小调到 256 token',
+    },
+    question: {
+      Topic: '我们的 RAG 检索质量在不同 query 类型上波动巨大 · 找根因 · 给方案',
+      Scope: '向量库 200K docs · 用户 query log 5K 条 · 评测指标 recall@10 / top-1 准确率 / latency p95',
+      'Why now': '客服反馈检索准确率波动大 · 不能复现 · 上线前必须定位到稳定方案',
+    },
+    panel: [
+      { avatar: 'L', name: '检索 lead', bio: '总览三大怀疑方向 · 决定 fork 哪几条子路线' },
+      { avatar: 'C', name: '切块工程师', bio: '负责切块策略子树 · 跑 3 种方案对比' },
+      { avatar: 'E', name: 'embedding 工程师', bio: '负责 embedding 子树 · 跑模型对比 + 微调' },
+      { avatar: 'J', name: '评测裁判', bio: '复跑每条方案 · 给独立 metric · 一票否决无复现的结论' },
+    ],
+    rules: ['每条 sub-hypothesis 必须独立跑实验', '评测裁判必须复跑 · 单方实验结果不算数', '方向被否定 → 整个 sub-tree 不再扩展'],
+    branchMap: { shape: 'tree' },
+    branches: [
+      { letter: 'H1', title: 'H1 · 切块策略', parent: null, status: 'parked', statusLabel: '△ 部分有效', thesis: '切块大小和边界决定召回质量' },
+      { letter: 'H2', title: 'H2 · embedding', parent: null, status: 'chosen', statusLabel: '✓ 关键因子', thesis: 'embedding 模型对 domain 适配度差' },
+      { letter: 'H3', title: 'H3 · query 重写', parent: null, status: 'killed', statusLabel: '✗ 无效', thesis: 'query 表达不充分,需要重写补全' },
+      { letter: 'H1a', title: '固定大小 512', parent: 'H1', status: 'killed', statusLabel: '✗ 退步', thesis: '暴力切 · 切坏语义边界' },
+      { letter: 'H1b', title: '语义切块', parent: 'H1', status: 'chosen', statusLabel: '✓ 入选', thesis: '按段落 / 句号智能切' },
+      { letter: 'H1c', title: '滑窗重叠', parent: 'H1', status: 'parked', statusLabel: '△ 边际', thesis: '切块重叠 50% · 缓解边界丢失' },
+      { letter: 'H2a', title: '更小更快模型', parent: 'H2', status: 'killed', statusLabel: '✗ 质量降', thesis: '牺牲质量换速度' },
+      { letter: 'H2b', title: '领域微调', parent: 'H2', status: 'chosen', statusLabel: '✓ 入选', thesis: '用 5K query-doc 对 fine-tune' },
+      { letter: 'H3a', title: 'HyDE 改写', parent: 'H3', status: 'killed', statusLabel: '✗ 无收益', thesis: '用 LLM 生成假答案再检索' },
+    ],
+    confidence: {
+      tested: ['3 个顶级方向独立跑过 · 共 6 个 sub-hypothesis 实验', '评测裁判复跑全部 chosen 方案', '组合方案 ABTest 5K query'],
+      untested: ['生产分布 vs 评测集分布是否一致', '新文档持续注入下的稳定性', '多语言 query 是否仍 hold'],
+      next: ['上线后 1 个月观察', '考察混合切块策略'],
+    },
+  },
+  mixed_campaign: {
+    eyebrow: 'RUN · 2026-04-27',
+    title: '内容矩阵结果总汇',
+    subtitle: '新 SaaS launch · 内容矩阵',
+    meta: 'run · 64 ticks · 26m wall',
+    verdict: {
+      lead: '<strong>3 条 angle 中 1 主推 · 1 备用 · 1 暂停</strong>',
+      bullets: ['Angle A 创始人故事:v1 退 → v2 退 → v3 ✓ accepted · 主推', 'Angle B 产品 demo:v1 退 → v2 退 · 撞产品功能更新 · 暂停', 'Angle C 客户案例:v1 退 → v2 ✓ 备用 · 客户 NDA 还没签下来'],
+      recommend: '下周一发 angle A 的 v3(创始人故事)· 客户 NDA 一签即跟 angle C v2(客户案例)',
+    },
+    question: {
+      Topic: 'SaaS launch · 同时备 3 条 angle 内容 · 各自打磨到能发的版本',
+      Scope: '目标平台:微信公众号 + 即刻 + LinkedIn(英文)· 受众:潜在客户 + VC · 风格:可信 + 不浮夸',
+      'Why now': 'launch 倒计时 14 天 · 不知道哪条 angle 最 work · 必须并行打磨',
+    },
+    panel: [
+      { avatar: 'D', name: 'Drafter', bio: '3 条 angle 各起初稿' },
+      { avatar: 'R', name: 'Reviser', bio: '针对每条 angle 的反馈改稿' },
+      { avatar: 'C', name: '潜在客户(VP Eng)', bio: 'B 端读者视角 · 关心可信度和实操' },
+      { avatar: 'V', name: 'VC 投资人', bio: '看市场 + 团队 + 故事 · 短耐心' },
+    ],
+    rules: ['每条 angle 各自独立 v1/v2/v3 三轮', '潜在客户 + VC 二人任一退稿即 revise', 'angle 在 3 轮内未通过即暂停'],
+    branchMap: { shape: 'mixed' },
+    branches: [
+      {
+        letter: 'A',
+        title: 'Angle A · 创始人故事',
+        status: 'chosen',
+        statusLabel: '✓ 主推',
+        thesis: '用创始人 5 年踩坑过程做主线 · 共鸣 + 信任',
+        versions: [
+          { letter: 'v1', status: 'killed', statusLabel: '✗ 退稿', contentMeta: '1200 字 · 太苦情' },
+          { letter: 'v2', status: 'killed', statusLabel: '✗ 退稿', contentMeta: '950 字 · 太自我', diff: { summary: 'vs v1 · 删苦情段 · 加产品价值' } },
+          { letter: 'v3', status: 'chosen', statusLabel: '✓ Final', contentMeta: '780 字 · 平衡了', diff: { summary: 'vs v2 · 加客户痛点引子' } },
+        ],
+      },
+      {
+        letter: 'B',
+        title: 'Angle B · 产品 demo',
+        status: 'parked',
+        statusLabel: '△ 暂停',
+        thesis: '用真实场景演示功能 · 短视频 + 截图',
+        versions: [
+          { letter: 'v1', status: 'killed', statusLabel: '✗ 退稿', contentMeta: '录屏 90s · 旁白生硬' },
+          { letter: 'v2', status: 'parked', statusLabel: '△ 撞 RC', contentMeta: '60s · 但产品 RC 改了 UI', diff: { summary: 'vs v1 · 重录 · 但 UI 又变' } },
+        ],
+      },
+      {
+        letter: 'C',
+        title: 'Angle C · 客户案例',
+        status: 'parked',
+        statusLabel: '△ 备用',
+        thesis: '首批 beta 客户的真实数据 + 推荐语',
+        versions: [
+          { letter: 'v1', status: 'killed', statusLabel: '✗ NDA', contentMeta: '1500 字 · 数据没授权' },
+          { letter: 'v2', status: 'parked', statusLabel: '△ 等 NDA', contentMeta: '1100 字 · 改成匿名版', diff: { summary: 'vs v1 · 客户名换代号 · 数据保留' } },
+        ],
+      },
+    ],
+    confidence: {
+      tested: ['3 条 angle 各自跑过 v1 + v2', '潜在客户 + VC 二人独立反馈', 'Voice 守门双签'],
+      untested: ['真实发布后转化率', 'B 端 vs VC 关心点是否对齐', 'C 客户 NDA 通过后能否如期跟'],
+      next: ['launch 后 7 天回流 · angle A 转化数据', 'C 客户 NDA · 跟法务催', '如果 A 反响不好 · 触发 angle D 实用 tutorial 路线'],
+    },
+  },
+}
+
+export const PILOT_DATASETS = [
+  { key: 'autoresearch', label: 'Latest · autoresearch run' },
+  { key: 'autoeditor', label: 'Linear · Hermes Agent' },
+  { key: 'tree_rag', label: 'Tree · RAG 调试' },
+  { key: 'mixed_campaign', label: 'Mixed · SaaS launch' },
+]
