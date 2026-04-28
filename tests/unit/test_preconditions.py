@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from worldseed.dsl.preconditions import evaluate
+from worldseed.engine.event_log import EventLog
 from worldseed.engine.state_store import StateStore
 from worldseed.models import Entity
 from worldseed.models.config_schema import PreconditionConfig
+from worldseed.models.event import Event
 
 
 def _bunker_store() -> StateStore:
@@ -314,6 +316,127 @@ class TestEvent:
             expression="event(type=confrontation)",
         )
         assert evaluate(p, store, _ctx()) is False
+
+
+class TestEventsSince:
+    def _make_log(self, events: list[tuple[int, str]]) -> EventLog:
+        log = EventLog()
+        for tick, etype in events:
+            log.append(Event(tick=tick, type=etype, source="x", detail="", ttl=99, scope="global"))
+        return log
+
+    def test_window_inclusive(self) -> None:
+        """events_since(type=X, max_age_ticks=N) includes events where tick >= now-N."""
+        store = _bunker_store()
+        ctx = {
+            "agent_id": "a",
+            "action_params": {},
+            "tick": 10,
+            "event_log": self._make_log([(5, "ping"), (8, "ping"), (10, "ping")]),
+        }
+        # max_age_ticks=2 → since=8 → 8 and 10 included, 5 excluded
+        p = PreconditionConfig(
+            operator="exists",
+            expression="events_since(type=ping, max_age_ticks=2)",
+        )
+        assert evaluate(p, store, ctx) is True
+
+    def test_window_excludes_old(self) -> None:
+        store = _bunker_store()
+        ctx = {
+            "agent_id": "a",
+            "action_params": {},
+            "tick": 20,
+            "event_log": self._make_log([(5, "ping")]),
+        }
+        p = PreconditionConfig(
+            operator="exists",
+            expression="events_since(type=ping, max_age_ticks=2)",
+        )
+        assert evaluate(p, store, ctx) is False
+
+    def test_type_filter(self) -> None:
+        store = _bunker_store()
+        ctx = {
+            "agent_id": "a",
+            "action_params": {},
+            "tick": 5,
+            "event_log": self._make_log([(5, "other")]),
+        }
+        p = PreconditionConfig(
+            operator="exists",
+            expression="events_since(type=ping, max_age_ticks=10)",
+        )
+        assert evaluate(p, store, ctx) is False
+
+    def test_no_event_log(self) -> None:
+        store = _bunker_store()
+        p = PreconditionConfig(
+            operator="exists",
+            expression="events_since(type=ping, max_age_ticks=5)",
+        )
+        assert evaluate(p, store, _ctx()) is False
+
+
+class TestLastEventTick:
+    def _make_log(self, events: list[tuple[int, str]]) -> EventLog:
+        log = EventLog()
+        for tick, etype in events:
+            log.append(Event(tick=tick, type=etype, source="x", detail="", ttl=99, scope="global"))
+        return log
+
+    def test_returns_max_tick(self) -> None:
+        """last_event_tick returns the highest tick of matching events."""
+        store = _bunker_store()
+        ctx = {
+            "agent_id": "a",
+            "action_params": {},
+            "tick": 10,
+            "event_log": self._make_log([(2, "ping"), (7, "ping"), (5, "ping")]),
+        }
+        # arithmetic in left: $tick - last_event_tick(...) = 10 - 7 = 3
+        p = PreconditionConfig(
+            operator="check",
+            left="$tick - last_event_tick(type=ping)",
+            op="==",
+            right=3,
+        )
+        assert evaluate(p, store, ctx) is True
+
+    def test_returns_minus_one_when_empty(self) -> None:
+        """No matching events → returns -1 (lets cold-start fire after enough ticks)."""
+        store = _bunker_store()
+        ctx = {
+            "agent_id": "a",
+            "action_params": {},
+            "tick": 10,
+            "event_log": self._make_log([]),
+        }
+        # 10 - (-1) = 11
+        p = PreconditionConfig(
+            operator="check",
+            left="$tick - last_event_tick(type=ping)",
+            op=">=",
+            right=10,
+        )
+        assert evaluate(p, store, ctx) is True
+
+    def test_type_filter(self) -> None:
+        store = _bunker_store()
+        ctx = {
+            "agent_id": "a",
+            "action_params": {},
+            "tick": 10,
+            "event_log": self._make_log([(7, "other")]),
+        }
+        # only 'other' events; ping has none → -1
+        p = PreconditionConfig(
+            operator="check",
+            left="last_event_tick(type=ping)",
+            op="==",
+            right=-1,
+        )
+        assert evaluate(p, store, ctx) is True
 
 
 class TestCompound:

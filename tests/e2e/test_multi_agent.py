@@ -323,7 +323,7 @@ class TestActionValidation:
         token = _register(base, "old_chen")
         engine.step()
 
-        # engine.submit() raises ValueError -> FastAPI returns 500
+        # Unknown action: engine.submit() raises ValueError -> /act returns 400
         r = httpx.post(
             f"{base}/act",
             json={
@@ -332,7 +332,7 @@ class TestActionValidation:
                 "params": {},
             },
         )
-        assert r.status_code == 500
+        assert r.status_code == 400
 
     def test_missing_required_param_returns_error(self, bunker_server: dict[str, Any]) -> None:
         base = bunker_server["base_url"]
@@ -341,7 +341,7 @@ class TestActionValidation:
         token = _register(base, "old_chen")
         engine.step()
 
-        # "say" requires "message" param
+        # "say" requires "message" param -> /act returns 400
         r = httpx.post(
             f"{base}/act",
             json={
@@ -350,7 +350,7 @@ class TestActionValidation:
                 "params": {},
             },
         )
-        assert r.status_code == 500
+        assert r.status_code == 400
 
     def test_invalid_token_returns_401(self, bunker_server: dict[str, Any]) -> None:
         base = bunker_server["base_url"]

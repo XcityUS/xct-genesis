@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from worldseed.engine.action_queue import ActionQueue
@@ -18,10 +19,22 @@ from worldseed.models.config_schema import SceneConfig
 if TYPE_CHECKING:
     from worldseed.agent_registry import AgentRegistry
     from worldseed.dm.providers.base import DMProvider
+    from worldseed.engine.director import DirectorRuntime
     from worldseed.persistence import NullRecorder, RunRecorder
 
 
 MAX_DM_CALLS_PER_TICK = 10  # rate limit: max parallel DM calls per tick
+
+
+def _serialize_ctx(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Strip non-JSON-safe entries from a tick ctx so PendingDMRequest survives pause/resume."""
+    out: dict[str, Any] = {}
+    for key, val in ctx.items():
+        if key in ("event_log", "recorder"):
+            continue
+        if isinstance(val, (str, int, float, bool, type(None), list, dict, tuple)):
+            out[key] = val
+    return out
 
 
 class TickEngine:
@@ -37,6 +50,7 @@ class TickEngine:
         dm_provider: DMProvider | None = None,
         recorder: RunRecorder | NullRecorder | None = None,
         registry: AgentRegistry | None = None,
+        director_runtime: DirectorRuntime | None = None,
     ) -> None:
         self._config = config
         self._store = store
@@ -50,19 +64,14 @@ class TickEngine:
         self._dm_call_count: int = 0
         self._dm_provider = dm_provider
         self._pending_ops = PendingOpsQueue()
+        self._director = director_runtime
 
-        # Build DM components if provider given
-        dm_builder = None
-        if dm_provider is not None:
-            from worldseed.dm.builder import DMContextBuilder
+        # DMContextBuilder is unconditional: scenes that route DM through the
+        # director-signal layer still need DMContext to hand to the caller.
+        from worldseed.dm.builder import DMContextBuilder
 
-            dm_builder = DMContextBuilder(
-                store,
-                event_log,
-                config,
-            )
+        dm_builder = DMContextBuilder(store, event_log, config)
 
-        # Phase 2 components
         self._inbox_manager = inbox_manager
 
         self._dm_builder = dm_builder
@@ -108,6 +117,15 @@ class TickEngine:
     def pending_ops(self) -> PendingOpsQueue:
         """The pending GM operations queue."""
         return self._pending_ops
+
+    def set_language(self, lang: str) -> None:
+        """Update DMContextBuilder language used by all DM prompts."""
+        self._dm_builder.language = lang
+
+    def restore_state(self, *, tick: int, dm_call_count: int) -> None:
+        """Restore tick + DM-call counters from a saved snapshot."""
+        self._tick = tick
+        self._dm_call_count = dm_call_count
 
     def step(self) -> list[ActionResult]:
         """Process one tick (sync — DM calls skipped)."""
@@ -155,6 +173,13 @@ class TickEngine:
                 dm_pending.append((result, dm_info))
 
         # Phase 2: DM calls — group by location to avoid conflicts
+        if dm_pending and self._director is not None and self._director.is_signal_mode():
+            # Signal mode: hand DM intents off to the director queue. The
+            # provider is not called and _dm_call_count is not incremented;
+            # an external caller resolves via /api/director/dm/{id}.
+            self._enqueue_action_dm_signals(dm_pending)
+            dm_pending = []
+
         if dm_pending:
             import asyncio
             from collections import defaultdict
@@ -223,10 +248,66 @@ class TickEngine:
         consequence_dm_pending = self._post_actions(self._tick)
 
         # Phase 4: Resolve consequence DM calls (if any)
-        if consequence_dm_pending and self._dm_provider and self._dm_builder:
-            await self._resolve_consequence_dm(consequence_dm_pending)
+        if consequence_dm_pending:
+            if self._director is not None and self._director.is_signal_mode():
+                self._enqueue_consequence_dm_signals(consequence_dm_pending)
+            elif self._dm_provider and self._dm_builder:
+                await self._resolve_consequence_dm(consequence_dm_pending)
 
         return results
+
+    def _enqueue_action_dm_signals(
+        self,
+        dm_pending: list[tuple[ActionResult, dict[str, Any]]],
+    ) -> None:
+        """Hand action DM intents to the director-signal queue."""
+        assert self._director is not None
+        for _result, info in dm_pending:
+            action = info["action"]
+            dm_config = info["dm_config"]
+            ctx = info["ctx"]
+            dm_context = self._dm_builder.build(action, dm_config, info["tick"])
+            self._director.enqueue_action_dm_request(
+                action={
+                    "agent_id": action.agent_id,
+                    "action_type": action.action_type,
+                    "params": action.params,
+                    "tick_submitted": action.tick_submitted,
+                },
+                dm_config=dm_config.model_dump(),
+                ctx=_serialize_ctx(ctx),
+                dm_context=asdict(dm_context),
+                actor_agent_id=action.agent_id,
+                tick=info["tick"],
+            )
+
+    def _enqueue_consequence_dm_signals(
+        self,
+        consequence_dm_pending: list[dict[str, Any]],
+    ) -> None:
+        """Hand consequence DM intents to the director-signal queue."""
+        assert self._director is not None
+        from worldseed.models.action import ActionSubmission
+
+        for info in consequence_dm_pending:
+            consequence_name = info["consequence_name"]
+            dm_config = info["dm_config"]
+            ctx = info["ctx"]
+            tick = info["tick"]
+            synthetic = ActionSubmission(
+                agent_id="",
+                action_type=f"consequence:{consequence_name}",
+                params={},
+            )
+            dm_context = self._dm_builder.build(synthetic, dm_config, tick)
+            dm_context.prompt_mode = "consequence"
+            self._director.enqueue_consequence_dm_request(
+                consequence_name=consequence_name,
+                dm_config=dm_config.model_dump(),
+                ctx=_serialize_ctx(ctx),
+                dm_context=asdict(dm_context),
+                tick=tick,
+            )
 
     async def _resolve_consequence_dm(self, pending: list[dict[str, Any]]) -> None:
         """Resolve DM calls triggered by consequences."""
@@ -305,53 +386,42 @@ class TickEngine:
             )
 
     def _record_results(self, results: list[ActionResult]) -> None:
-        """Record action results + notify failures to agent inbox."""
-        for result in results:
-            if self._recorder is not None:
-                action_cfg = self._config.actions.get(
-                    result.action.action_type,
-                )
-                rec_kwargs: dict[str, Any] = {
-                    "agent_id": result.action.agent_id,
-                    "action_type": result.action.action_type,
-                    "params": result.action.params,
-                    "success": result.success,
-                    "reason": result.reason,
-                }
-                if result.success and action_cfg is not None and action_cfg.highlight:
-                    rec_kwargs["highlight"] = True
-                self._recorder.record(
-                    "action",
-                    self._tick,
-                    **rec_kwargs,
-                )
-            # Emit highlight event for action rejections
-            if not result.success and self._event_log is not None:
-                from worldseed.models.event import Event
+        """Record action results + notify failures to agent inbox.
 
-                self._event_log.append(
-                    Event(
-                        tick=self._tick,
-                        type="action_rejected",
-                        source=result.action.agent_id,
-                        detail=(
-                            f"{result.action.agent_id} tried '{result.action.action_type}' but failed: {result.reason}"
-                        ),
-                        ttl=5,
-                        scope="admin",
-                        highlight=True,
+        Failed actions are NOT recorded to stream — the agent receives
+        an inbox whisper so it can adjust, but the viewer stream stays clean.
+        """
+        for result in results:
+            if result.success:
+                if self._recorder is not None:
+                    action_cfg = self._config.actions.get(
+                        result.action.action_type,
                     )
-                )
-            if not result.success and self._inbox_manager is not None:
-                inbox = self._inbox_manager.get_or_create(result.action.agent_id)
-                inbox.append_whisper(
-                    InboxWhisper(
-                        tick=self._tick,
-                        source="system",
-                        detail=(f"Your '{result.action.action_type}' action failed: {result.reason}"),
-                        type="action_failed",
+                    rec_kwargs: dict[str, Any] = {
+                        "agent_id": result.action.agent_id,
+                        "action_type": result.action.action_type,
+                        "params": result.action.params,
+                        "success": True,
+                        "reason": "",
+                    }
+                    if action_cfg is not None and action_cfg.highlight:
+                        rec_kwargs["highlight"] = True
+                    self._recorder.record(
+                        "action",
+                        self._tick,
+                        **rec_kwargs,
                     )
-                )
+            else:
+                if self._inbox_manager is not None:
+                    inbox = self._inbox_manager.get_or_create(result.action.agent_id)
+                    inbox.append_whisper(
+                        InboxWhisper(
+                            tick=self._tick,
+                            source="system",
+                            detail=(f"Your '{result.action.action_type}' action failed: {result.reason}"),
+                            type="action_failed",
+                        )
+                    )
 
     def _post_actions(self, tick: int) -> list[dict[str, Any]]:
         """Steps 3-7: auto_tick, consequence, perceiver, cleanup, persist.

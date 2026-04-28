@@ -17,6 +17,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from worldseed.engine.state_store import StateStore
 
+# Scene-specific effect operators — loaded for scenes that use them.
+# Keeping registration here (vs. conditional on scene_id) is simpler and the
+# operators are namespaced so they won't collide with generic ones.
+import worldseed.autoresearch  # noqa: F401  # registers `autoresearch_exec`
 import worldseed.dsl.effects.entity_ops  # noqa: F401
 import worldseed.dsl.effects.event_ops  # noqa: F401
 import worldseed.dsl.effects.for_each_ops  # noqa: F401

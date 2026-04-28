@@ -8,6 +8,7 @@ Zero hardcoded scene-specific strings — works with any config.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,7 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture
-async def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+async def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[dict[str, Any]]:
     """Server env with engine, client, recorder. Tick NOT started."""
     monkeypatch.setenv("WORLDSEED_HOME", str(tmp_path / ".worldseed"))
 
@@ -46,20 +47,29 @@ async def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]
         run_id=run_id,
         auto_start_tick=False,
     )
+    # Mirror gateway-side WS register so /api/tick/resume can auto-start.
+    app.state.agents_ready.update(engine.registry.expected_agent_ids())
 
     transport = ASGITransport(app=app)
-    client = AsyncClient(transport=transport, base_url="http://test")
-
-    return {
-        "client": client,
-        "engine": engine,
-        "recorder": recorder,
-        "app": app,
-        "run_id": run_id,
-        "run_dir": recorder.run_dir,
-        "tmp_path": tmp_path,
-        "config_path": config_path,
-    }
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        try:
+            yield {
+                "client": client,
+                "engine": engine,
+                "recorder": recorder,
+                "app": app,
+                "run_id": run_id,
+                "run_dir": recorder.run_dir,
+                "tmp_path": tmp_path,
+                "config_path": config_path,
+            }
+        finally:
+            tr = app.state.tick_runner
+            if tr is not None and tr.running:
+                await tr.stop()
+            connector = tr.connector if tr is not None else None
+            if connector is not None:
+                await connector.close()
 
 
 # ── Health ──────────────────────────────────────────

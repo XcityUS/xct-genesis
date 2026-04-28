@@ -11,6 +11,31 @@ import de from "./locales/de/common.json";
 
 const LS_LANGUAGE = "ws-language";
 
+/** Supported languages — single source of truth for all language selectors. */
+export const LANGUAGES = [
+  { code: "en", label: "EN", name: "English" },
+  { code: "zh", label: "中", name: "中文" },
+  { code: "ja", label: "日", name: "日本語" },
+  { code: "ko", label: "한", name: "한국어" },
+  { code: "es", label: "ES", name: "Español" },
+  { code: "fr", label: "FR", name: "Français" },
+  { code: "de", label: "DE", name: "Deutsch" },
+] as const;
+
+function detectBrowserLanguage(): string {
+  if (typeof navigator === "undefined") return "en";
+  const supported = new Set<string>(LANGUAGES.map((l) => l.code));
+  const candidates = navigator.languages?.length
+    ? Array.from(navigator.languages)
+    : [navigator.language];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const primary = candidate.toLowerCase().split(/[-_]/)[0];
+    if (supported.has(primary)) return primary;
+  }
+  return "en";
+}
+
 i18n.use(initReactI18next).init({
   resources: {
     en: { common: en },
@@ -21,7 +46,7 @@ i18n.use(initReactI18next).init({
     fr: { common: fr },
     de: { common: de },
   },
-  lng: localStorage.getItem(LS_LANGUAGE) || "en",
+  lng: localStorage.getItem(LS_LANGUAGE) || detectBrowserLanguage(),
   fallbackLng: "en",
   defaultNS: "common",
   interpolation: { escapeValue: false },
@@ -36,17 +61,6 @@ export function setLanguage(lang: string) {
   localStorage.setItem(LS_LANGUAGE, lang);
   i18n.changeLanguage(lang);
 }
-
-/** Supported languages — single source of truth for all language selectors. */
-export const LANGUAGES = [
-  { code: "en", label: "EN", name: "English" },
-  { code: "zh", label: "中", name: "中文" },
-  { code: "ja", label: "日", name: "日本語" },
-  { code: "ko", label: "한", name: "한국어" },
-  { code: "es", label: "ES", name: "Español" },
-  { code: "fr", label: "FR", name: "Français" },
-  { code: "de", label: "DE", name: "Deutsch" },
-] as const;
 
 /** Map i18n language code to the display name used by backend DM. */
 export function languageDisplayName(code: string): string {

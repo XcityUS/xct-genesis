@@ -170,16 +170,38 @@ def _call_sum(
     return sum_property(store, entity_type, prop, kw.get("where"), ctx)
 
 
+def _numeric_max(pairs: Any) -> str:
+    """Return the key with the largest numeric value, or "" on tie / empty.
+
+    `pairs` is an iterable of (key, raw_value). Non-numeric values are
+    skipped. The "" sentinel for ties is the director-signal contract:
+    callers can branch on it to request a tiebreak.
+    """
+    best_key = ""
+    best_val: float | None = None
+    tie = False
+    for key, raw in pairs:
+        if raw is None:
+            continue
+        try:
+            num = float(raw)
+        except (ValueError, TypeError):
+            continue
+        if best_val is None or num > best_val:
+            best_val = num
+            best_key = str(key)
+            tie = False
+        elif num == best_val:
+            tie = True
+    return "" if tie else best_key
+
+
 def _call_max_by(
     args_str: str,
     store: StateStore,
     ctx: dict[str, Any],
 ) -> str:
-    """max_by(type=X, property=Y, where=...) → entity ID with highest Y.
-
-    Returns "" if no matching entities or all values are None.
-    Returns "" if there's a tie for the maximum (no unique winner).
-    """
+    """max_by(type=X, property=Y, where=...) → entity ID with highest Y. "" on tie / empty."""
     kw = parse_kwargs(args_str)
     entity_type = kw.get("type")
     prop = kw.get("property")
@@ -191,32 +213,32 @@ def _call_max_by(
     if where is not None:
         matched = _filter_entities(matched, where, store, ctx)
 
-    if not matched:
+    return _numeric_max((getattr(e, "id", ""), walk_entity_path(e, prop)) for e in matched)
+
+
+def _call_max_by_key(
+    args_str: str,
+    store: StateStore,
+    ctx: dict[str, Any],
+) -> str:
+    """max_by_key(path) → key with highest value from a dict at path. "" on tie / empty.
+
+    Path is resolved via path_resolver, e.g. `vote.tally` or `$agent.scores`.
+    """
+    from worldseed.dsl.functions.helpers import split_args
+    from worldseed.dsl.path_resolver import resolve
+
+    args = split_args(args_str)
+    if not args:
         return ""
 
-    best_id = ""
-    best_val: float | None = None
-    tie = False
-
-    for e in matched:
-        val = walk_entity_path(e, prop)
-        if val is None:
-            continue
-        try:
-            num = float(val)  # type: ignore[arg-type]
-        except (ValueError, TypeError):
-            continue
-
-        if best_val is None or num > best_val:
-            best_val = num
-            best_id = getattr(e, "id", "")
-            tie = False
-        elif num == best_val:
-            tie = True
-
-    return "" if tie else best_id
+    val = resolve(args[0].strip(), store, ctx)
+    if not isinstance(val, dict):
+        return ""
+    return _numeric_max(val.items())
 
 
 register_function("count", _call_count)
 register_function("sum", _call_sum)
 register_function("max_by", _call_max_by)
+register_function("max_by_key", _call_max_by_key)

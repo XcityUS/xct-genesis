@@ -57,3 +57,19 @@ class GMResolveRequest(BaseModel):
 
 class ConfigReloadRequest(BaseModel):
     config_path: str
+
+
+class DirectorSignalAckRequest(BaseModel):
+    """Empty body for now; the path carries the signal id."""
+
+
+class DirectorDMResolveRequest(BaseModel):
+    """Resolve a queued DM request: narrative + structured effects.
+
+    `effects` is a list of EffectConfig dicts (same shape as scenario YAML).
+    Validation runs through the existing DM safety pipeline; invalid effects
+    fail the request and roll back atomically.
+    """
+
+    narrative: str
+    effects: list[dict[str, Any]] = []

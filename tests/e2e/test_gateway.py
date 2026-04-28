@@ -21,6 +21,7 @@ from worldseed.server.app import create_app
 
 from .conftest import (
     CONFIGS_DIR,
+    claim_all_preset_agents,
     get_free_port,
     start_uvicorn,
     stop_uvicorn,
@@ -108,6 +109,7 @@ class TestHealthStates:
         """After resume → status='live'."""
         base = gateway_server["base_url"]
         _start_world(base)
+        claim_all_preset_agents(gateway_server["app"])
 
         # Resume ticks
         r = httpx.post(f"{base}/api/tick/resume", timeout=10)
@@ -125,6 +127,7 @@ class TestHealthStates:
         """After pause → status='paused'."""
         base = gateway_server["base_url"]
         _start_world(base)
+        claim_all_preset_agents(gateway_server["app"])
 
         # Resume then pause — need at least one tick so we get 'paused' not 'ready'
         httpx.post(f"{base}/api/tick/resume", timeout=10)
@@ -271,6 +274,7 @@ class TestWorldStartNoAutoTick:
         base = gateway_server["base_url"]
         # Use short interval so ticks actually advance
         _start_world(base, tick_interval=0.1)
+        claim_all_preset_agents(gateway_server["app"])
 
         r = httpx.get(f"{base}/health")
         assert r.json()["tick"] == 0

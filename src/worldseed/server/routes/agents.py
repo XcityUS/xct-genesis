@@ -13,8 +13,6 @@ from worldseed.server.routes._shared import (
     _eng,
     _require_agent,
     _resolve_agent,
-    agent_tokens,
-    tokens,
 )
 from worldseed.server.websocket import ConnectionManager, handle_ws
 
@@ -81,12 +79,12 @@ def create_agents_router(app: FastAPI, ws_manager: ConnectionManager) -> APIRout
         else:
             raise HTTPException(400, detail=f"Invalid mode '{req.mode}'.")
 
-        old_token = agent_tokens.get(req.agent_id)
+        old_token = app.state.agent_tokens.get(req.agent_id)
         if old_token is not None:
-            tokens.pop(old_token, None)
+            app.state.tokens.pop(old_token, None)
         token = secrets.token_urlsafe(32)
-        tokens[token] = req.agent_id
-        agent_tokens[req.agent_id] = token
+        app.state.tokens[token] = req.agent_id
+        app.state.agent_tokens[req.agent_id] = token
 
         if is_new:
             await ws_manager.send_agent_registered(req.agent_id, result_character, eng.config.scene.id)
@@ -101,7 +99,7 @@ def create_agents_router(app: FastAPI, ws_manager: ConnectionManager) -> APIRout
     @router.get("/perceive")
     async def perceive(token: str | None = None, agent_id: str | None = None) -> dict[str, Any]:
         eng = _eng(app)
-        resolved = _resolve_agent(token, agent_id, tokens)
+        resolved = _resolve_agent(token, agent_id, app.state.tokens)
         _require_agent(eng, resolved)
         p = eng.perceive(resolved)
         result = p.to_dict()
@@ -113,9 +111,12 @@ def create_agents_router(app: FastAPI, ws_manager: ConnectionManager) -> APIRout
         from worldseed.engine.rules_engine import ActionResult
 
         eng = _eng(app)
-        resolved = _resolve_agent(req.token, req.agent_id, tokens)
+        resolved = _resolve_agent(req.token, req.agent_id, app.state.tokens)
         _require_agent(eng, resolved)
-        result = eng.submit(resolved, req.action, req.params)
+        try:
+            result = eng.submit(resolved, req.action, req.params)
+        except ValueError as exc:
+            raise HTTPException(400, detail=str(exc)) from exc
         if isinstance(result, ActionResult):
             # Mechanical action executed immediately
             if not result.success:

@@ -30,7 +30,7 @@ class WakeupEvaluator:
 
     def evaluate(self, inbox: Inbox) -> WakeupResult:
         """Evaluate whether an agent should wake."""
-        for event in inbox.peek_events():
+        for event in reversed(inbox.peek_events()):
             if event.source == inbox.agent_id:
                 continue
             if event.push:

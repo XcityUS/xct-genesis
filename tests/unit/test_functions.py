@@ -127,3 +127,52 @@ class TestCount:
             where="location == storage_room",
         )
         assert result == 0
+
+
+class TestMaxByKey:
+    """max_by_key(path) — pick winning key from a dict-shaped property."""
+
+    def _store_with_tally(self, tally: dict[str, int]) -> StateStore:
+        store = StateStore()
+        store.add(Entity(id="vote", type="ballot", _data={"tally": tally}))
+        return store
+
+    def test_picks_max_value_key(self) -> None:
+        from worldseed.dsl.functions._registry import get_function_handler
+
+        handler = get_function_handler("max_by_key")
+        assert handler is not None
+        store = self._store_with_tally({"yes": 3, "no": 1, "abstain": 2})
+        assert handler("vote.tally", store, {}) == "yes"
+
+    def test_tie_returns_empty(self) -> None:
+        from worldseed.dsl.functions._registry import get_function_handler
+
+        handler = get_function_handler("max_by_key")
+        assert handler is not None
+        store = self._store_with_tally({"yes": 2, "no": 2})
+        assert handler("vote.tally", store, {}) == ""
+
+    def test_empty_dict_returns_empty(self) -> None:
+        from worldseed.dsl.functions._registry import get_function_handler
+
+        handler = get_function_handler("max_by_key")
+        assert handler is not None
+        store = self._store_with_tally({})
+        assert handler("vote.tally", store, {}) == ""
+
+    def test_missing_path_returns_empty(self) -> None:
+        from worldseed.dsl.functions._registry import get_function_handler
+
+        handler = get_function_handler("max_by_key")
+        assert handler is not None
+        store = StateStore()
+        assert handler("nope.tally", store, {}) == ""
+
+    def test_skips_non_numeric(self) -> None:
+        from worldseed.dsl.functions._registry import get_function_handler
+
+        handler = get_function_handler("max_by_key")
+        assert handler is not None
+        store = self._store_with_tally({"yes": 3, "garbage": "abc"})  # type: ignore[dict-item]
+        assert handler("vote.tally", store, {}) == "yes"

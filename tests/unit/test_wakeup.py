@@ -95,6 +95,34 @@ class TestWakeup:
         assert result.should_wake is True
         assert "shout" in result.reason
 
+    def test_latest_push_event_sets_reason(self) -> None:
+        evaluator = WakeupEvaluator()
+        inbox = Inbox("agent1")
+        inbox.append_event(
+            InboxEvent(
+                tick=1,
+                type="api_note_ready",
+                source="api_explorer",
+                detail="old api note",
+                push=True,
+            )
+        )
+        inbox.append_event(
+            InboxEvent(
+                tick=2,
+                type="prompt_pattern_ready",
+                source="prompt_miner",
+                detail="new prompt pattern",
+                push=True,
+            )
+        )
+
+        result = evaluator.evaluate(inbox)
+
+        assert result.should_wake is True
+        assert "prompt_miner prompt_pattern_ready" in result.reason
+        assert "api_explorer api_note_ready" not in result.reason
+
     def test_evaluate_all(self) -> None:
         evaluator = WakeupEvaluator()
         mgr = InboxManager()

@@ -16,6 +16,7 @@ from worldseed.dsl.functions.helpers import try_numeric, walk_entity_path
 log = structlog.get_logger()
 
 _PARAM_RE = re.compile(r"\$(\w+)")
+_FUNC_CALL_PREFIX = re.compile(r"^\w+\s*\(")
 
 # Arithmetic operators in precedence order (lowest first = split first).
 # Two-char operators must come before single-char to avoid partial matches.
@@ -194,6 +195,7 @@ def _is_arithmetic(expr: str) -> bool:
                     or right_part.startswith("$")
                     or right_part.startswith("(")
                     or "." in right_part
+                    or bool(_FUNC_CALL_PREFIX.match(right_part))
                 )
                 if left_is_expr and right_is_expr:
                     return True

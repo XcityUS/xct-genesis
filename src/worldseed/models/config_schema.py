@@ -168,6 +168,10 @@ class PreconditionConfig(BaseModel):
     # not: single nested condition
     condition: PreconditionConfig | None = None
 
+    # Reject unknown fields. A typo or stale field would otherwise be silently
+    # dropped — see the dead `args:` payload in older autoresearch configs.
+    model_config = ConfigDict(extra="forbid")
+
 
 class EffectConfig(BaseModel):
     operator: str  # Validated against effect registry at runtime
@@ -224,7 +228,7 @@ class EffectConfig(BaseModel):
     # conditional execution: skip this effect if condition is false
     when: PreconditionConfig | None = None
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
 class EventConfig(BaseModel):
@@ -232,9 +236,17 @@ class EventConfig(BaseModel):
     detail: str
     ttl: int | Literal["permanent"]
     scope: str = "global"  # free string, defined per scene
-    target: str | None = None
+    # Target agent for directed events. YAML may write either `target:` or
+    # `event_target:` — both are accepted to match the EffectConfig.event_target
+    # convention while remaining compatible with older configs.
+    event_target: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("event_target", "target"),
+    )
     push: bool = False  # wake agents immediately when this event fires
     highlight: bool = False  # mark as important for observer dashboard
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
 class DMConfig(BaseModel):
@@ -272,6 +284,8 @@ class ConsequenceConfig(BaseModel):
     effects: list[EffectConfig] = Field(default_factory=list)
     frequency: Literal["on_change", "every_tick"] = "on_change"
     dm: DMConfig | None = None  # Optional DM judgment when consequence triggers
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class HighlightConfig(BaseModel):
@@ -374,6 +388,9 @@ class SceneMetaConfig(BaseModel):
     default_spawn: dict[str, Any] = Field(default_factory=dict)
     # Import presets: use: [social, spatial] loads configs/presets/{name}.yaml
     use: list[str] = Field(default_factory=list)
+    # Agent runtime: "openclaw" (default, auto-spawn) or "custom" (user-launched
+    # Python runtime; engine skips OpenClaw spawn).
+    agent_runtime: Literal["openclaw", "custom"] = "openclaw"
 
 
 class SanityStep(BaseModel):
@@ -432,6 +449,46 @@ class NarratorConfig(BaseModel):
         return data
 
 
+class DirectorCheckpointConfig(BaseModel):
+    """Checkpoint cadence policy for director-signal layer.
+
+    None on a dimension disables that trigger. on_event_types forces a
+    checkpoint whenever any new event of those types appears. Ignore lists
+    let scenes redefine which scopes/types are bookkeeping noise — defaults
+    cover the engine's built-ins.
+    """
+
+    every_events: int | None = Field(default=8, ge=1)
+    every_minutes: float | None = Field(default=5.0, gt=0)
+    every_ticks: int | None = Field(default=None, ge=1)
+    on_event_types: list[str] = Field(default_factory=list)
+    ignore_event_scopes: list[str] = Field(default_factory=lambda: ["admin"])
+    ignore_event_types: list[str] = Field(default_factory=lambda: ["action_rejected"])
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DirectorConfig(BaseModel):
+    """Director-signal configuration.
+
+    When enabled, the engine surfaces dm_request / urgent / checkpoint
+    signals via /api/director/* for an external main agent (Codex, Claude,
+    custom). Default disabled; existing scenes behave identically when
+    `director:` is absent in YAML.
+
+    dm_mode "signal" routes action and consequence DM into the signal
+    queue instead of calling the in-process provider. "internal" keeps
+    the existing provider path.
+    """
+
+    enabled: bool = False
+    dm_mode: Literal["internal", "signal"] = "signal"
+    max_pending_dm: int = Field(default=64, ge=1)
+    checkpoint: DirectorCheckpointConfig = Field(default_factory=DirectorCheckpointConfig)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class SceneConfig(BaseModel):
     scene: SceneMetaConfig
     entities: list[EntityConfig]
@@ -443,4 +500,15 @@ class SceneConfig(BaseModel):
     auto_tick: list[AutoTickConfig] = Field(default_factory=list)
     perception: PerceptionConfig = Field(default_factory=PerceptionConfig)
     sanity_checks: list[SanityCheckConfig] = Field(default_factory=list)
-    narrator: NarratorConfig | bool = Field(default_factory=NarratorConfig)
+    narrator: NarratorConfig | None = Field(default_factory=NarratorConfig)
+    director: DirectorConfig | None = None
+
+    @field_validator("narrator", mode="before")
+    @classmethod
+    def _normalize_narrator(cls, value: Any) -> Any:
+        """Accept bool shorthand: True → default config, False → disabled (None)."""
+        if value is True:
+            return NarratorConfig()
+        if value is False:
+            return None
+        return value

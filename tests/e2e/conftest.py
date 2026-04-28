@@ -62,6 +62,24 @@ def stop_uvicorn(server: uvicorn.Server, thread: threading.Thread) -> None:
     thread.join(timeout=5)
 
 
+def claim_all_preset_agents(app: Any) -> set[str]:
+    """Mark all preset agents as registered, mirroring gateway WS auth.
+
+    Production registers agents through the OpenClaw gateway → WS → engine.
+    E2E tests can't run a real gateway, so this short-circuits the flow:
+      - calls engine.register_from_config() to claim presets in the registry
+      - populates app.state.agents_ready so maybe_auto_start_ticks succeeds
+    Returns the set of agent ids marked ready.
+    """
+    engine = app.state.engine
+    if engine is None:
+        return set()
+    engine.register_from_config()
+    expected = engine.registry.expected_agent_ids()
+    app.state.agents_ready.update(expected)
+    return expected
+
+
 @pytest_asyncio.fixture
 async def e2e_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[dict[str, Any]]:
     """Full server environment: engine + app + async client + recorder.

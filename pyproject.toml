@@ -34,6 +34,11 @@ packages = ["src/worldseed"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# Default to xdist parallel — sequential mode triggers cross-test pollution
+# from module-level singletons in server routes (tokens, agent_tokens) and
+# shared state in e2e/integration fixtures. Each worker is a fresh process,
+# so workers can't pollute each other. Override with `pytest -p no:xdist`.
+addopts = "-n auto"
 
 [tool.ruff]
 target-version = "py311"
@@ -48,6 +53,11 @@ python_version = "3.11"
 strict = true
 packages = ["worldseed"]
 mypy_path = ["src"]
+exclude = ["src/worldseed/autoresearch/baseline_template/"]
+
+[[tool.mypy.overrides]]
+module = "worldseed.autoresearch.baseline_template.*"
+ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "litellm"

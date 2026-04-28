@@ -12,8 +12,7 @@ from fastapi import APIRouter, FastAPI, HTTPException
 from worldseed.server.routes._shared import (
     _kill_gateway,
     _spawn_gateway,
-    agent_tokens,
-    tokens,
+    clear_tokens,
 )
 from worldseed.server.tick_runner import TickRunner
 from worldseed.server.websocket import ConnectionManager
@@ -164,8 +163,7 @@ def create_world_router(app: FastAPI, ws_manager: ConnectionManager) -> APIRoute
         app.state.tick_runner = None
         app.state.run_id = ""
 
-        tokens.clear()
-        agent_tokens.clear()
+        clear_tokens(app)
         app.state.agents_ready = set()
 
         # Kill gateway

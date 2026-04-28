@@ -21,6 +21,7 @@ from worldseed.server.app import create_app
 
 from .conftest import (
     CONFIGS_DIR,
+    claim_all_preset_agents,
     get_free_port,
     start_uvicorn,
     stop_uvicorn,
@@ -581,6 +582,7 @@ class TestSettingsEdgeCases:
         """Set interval to 0.1, wait 2s, verify many ticks advanced."""
         base = lobby_server["base_url"]
         _start_world(base, tick_interval=60.0)  # Start slow
+        claim_all_preset_agents(lobby_server["app"])
 
         # Pause the current (slow) tick runner
         httpx.post(f"{base}/api/tick/pause", timeout=10)

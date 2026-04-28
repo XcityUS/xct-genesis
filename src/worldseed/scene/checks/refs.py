@@ -374,6 +374,7 @@ _KNOWN_DSL_FUNCTIONS = {
     "event",
     "length",
     "random",
+    "entities_of",
 }
 _RELATIONSHIPS_OF_RE = re.compile(r"^relationships_of\(\s*(\$[\w.]+)\s*,\s*type\s*=\s*(\w+)\s*\)$")
 

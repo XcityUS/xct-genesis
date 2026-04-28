@@ -9,11 +9,12 @@ That's it. path_resolver will find it automatically.
 from __future__ import annotations
 
 import worldseed.dsl.functions.aggregation  # noqa: F401
+
+# Import modules to trigger registration
+import worldseed.dsl.functions.entities  # noqa: F401  # registers `entities_of`
 import worldseed.dsl.functions.events  # noqa: F401
 import worldseed.dsl.functions.length_fn  # noqa: F401
 import worldseed.dsl.functions.random_fn  # noqa: F401
-
-# Import modules to trigger registration
 import worldseed.dsl.functions.relationships  # noqa: F401
 from worldseed.dsl.functions._registry import (
     get_all_functions,

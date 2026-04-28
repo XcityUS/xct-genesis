@@ -232,43 +232,21 @@ async def resolve_dm(
             elapsed_s=round(dm_elapsed, 3),
         )
 
-    # Snapshot → apply atomically → rollback on error
-    snapshots = snapshot_entities(store, response.effects)
-
-    # DM effects inherit the action's configured scope for emit_event
-    # Use dict spread to avoid mutating the caller's ctx
-    dm_ctx_effects = {**ctx, "dm_scope": dm_config.scope}
-    try:
-        for dm_effect in response.effects:
-            execute_effect(dm_effect, store, event_log, dm_ctx_effects, tick)
-    except Exception:
-        log.warning(
-            "dm_effects_rollback",
-            action=action.action_type,
-            exc_info=True,
-        )
-        restore_snapshots(store, snapshots)
-        emit_fallback_narrative(
-            action.agent_id,
-            tick,
-            inbox_manager=inbox_manager,
-        )
-        return
-
-    # Deliver narrative to actor as whisper (not broadcast event).
-    # Bystanders see the config event ("X examines Y"), not the DM prose.
-    if response.narrative and inbox_manager is not None:
-        from worldseed.engine.inbox import InboxWhisper
-
-        inbox = inbox_manager.get_or_create(action.agent_id)
-        inbox.append_whisper(
-            InboxWhisper(
-                tick=tick,
-                source="dm",
-                detail=response.narrative,
-                type="dm_narrative",
-            )
-        )
+    ok = apply_dm_response(
+        response=response,
+        store=store,
+        event_log=event_log,
+        ctx=ctx,
+        tick=tick,
+        dm_scope=dm_config.scope,
+        narrative_recipient=action.agent_id,
+        narrative_event_type="dm_narrative",
+        narrative_source="dm",
+        inbox_manager=inbox_manager,
+    )
+    if not ok:
+        log.warning("dm_effects_rollback", action=action.action_type, exc_info=True)
+        emit_fallback_narrative(action.agent_id, tick, inbox_manager=inbox_manager)
 
 
 async def resolve_gm_command(
@@ -377,32 +355,24 @@ async def resolve_gm_command(
             success=True,
         )
 
-    # Snapshot → apply atomically → rollback on error
-    snapshots = snapshot_entities(store, response.effects)
-    ctx: dict[str, Any] = {"recorder": recorder, "dm_scope": gm_resolve_config.scope}
-
-    try:
-        for dm_effect in response.effects:
-            execute_effect(dm_effect, store, event_log, ctx, tick)
-    except Exception:
+    ok = apply_dm_response(
+        response=response,
+        store=store,
+        event_log=event_log,
+        ctx={"recorder": recorder},
+        tick=tick,
+        dm_scope=gm_resolve_config.scope,
+        narrative_recipient=None,
+        narrative_event_type="gm_resolve",
+        narrative_source="gm",
+        narrative_ttl=5,
+        inbox_manager=None,
+    )
+    if not ok:
         log.warning("gm_resolve_effects_rollback", text=text, exc_info=True)
-        restore_snapshots(store, snapshots)
         result["success"] = False
         result["reason"] = "Effect execution failed, rolled back"
         return result
-
-    # Emit narrative as admin-scoped event
-    if response.narrative:
-        event_log.append(
-            Event(
-                tick=tick,
-                type="gm_resolve",
-                source="gm",
-                detail=response.narrative,
-                ttl=5,
-                scope="admin",
-            )
-        )
 
     result["success"] = True
     result["effects_count"] = len(response.effects)
@@ -460,6 +430,87 @@ def restore_snapshots(
         entity = store.get(eid)
         if entity is not None:
             entity.data = props
+
+
+def apply_dm_response(
+    *,
+    response: Any,  # DMResponse
+    store: StateStore,
+    event_log: EventLog,
+    ctx: dict[str, Any],
+    tick: int,
+    dm_scope: str,
+    narrative_recipient: str | None,
+    narrative_event_type: str = "dm_narrative",
+    narrative_source: str = "dm",
+    narrative_ttl: int = 3,
+    inbox_manager: InboxManager | None = None,
+) -> bool:
+    """Apply DM effects atomically and deliver narrative. Returns success.
+
+    Caller is responsible for validating and sanitizing effects beforehand.
+    On failure, state is rolled back and the narrative is NOT emitted —
+    the caller decides how to surface the failure (whisper, log, result dict).
+    """
+    snapshots = snapshot_entities(store, response.effects)
+    dm_ctx_effects = {**ctx, "dm_scope": dm_scope}
+    try:
+        for effect in response.effects:
+            execute_effect(effect, store, event_log, dm_ctx_effects, tick)
+    except Exception:
+        restore_snapshots(store, snapshots)
+        return False
+
+    if response.narrative:
+        _deliver_narrative(
+            narrative=response.narrative,
+            recipient=narrative_recipient,
+            event_type=narrative_event_type,
+            source=narrative_source,
+            scope=dm_scope or "global",
+            tick=tick,
+            ttl=narrative_ttl,
+            event_log=event_log,
+            inbox_manager=inbox_manager,
+        )
+    return True
+
+
+def _deliver_narrative(
+    *,
+    narrative: str,
+    recipient: str | None,
+    event_type: str,
+    source: str,
+    scope: str,
+    tick: int,
+    ttl: int,
+    event_log: EventLog,
+    inbox_manager: InboxManager | None,
+) -> None:
+    """Whisper to a single recipient, or fall back to a scoped global event."""
+    if recipient and inbox_manager is not None:
+        from worldseed.engine.inbox import InboxWhisper
+
+        inbox_manager.get_or_create(recipient).append_whisper(
+            InboxWhisper(
+                tick=tick,
+                source=source,
+                detail=narrative,
+                type=event_type,
+            )
+        )
+    else:
+        event_log.append(
+            Event(
+                tick=tick,
+                type=event_type,
+                source=source,
+                detail=narrative,
+                ttl=ttl,
+                scope=scope,
+            )
+        )
 
 
 async def resolve_consequence_dm(
@@ -562,32 +613,21 @@ async def resolve_consequence_dm(
             elapsed_s=round(dm_elapsed, 3),
         )
 
-    # Apply DM effects — inherit configured scope for emit_event
-    # Use dict spread to avoid mutating the caller's ctx
-    snapshots = snapshot_entities(store, response.effects)
-    dm_ctx_effects = {**ctx, "dm_scope": dm_config.scope}
-    try:
-        for dm_effect in response.effects:
-            execute_effect(dm_effect, store, event_log, dm_ctx_effects, tick)
-    except Exception:
+    ok = apply_dm_response(
+        response=response,
+        store=store,
+        event_log=event_log,
+        ctx=ctx,
+        tick=tick,
+        dm_scope=dm_config.scope,
+        narrative_recipient=None,
+        narrative_event_type="dm_narrative",
+        narrative_source="consequence",
+        inbox_manager=None,
+    )
+    if not ok:
         log.warning(
             "consequence_dm_effects_rollback",
             consequence=consequence_name,
             exc_info=True,
-        )
-        restore_snapshots(store, snapshots)
-        return
-
-    # Emit narrative as global event
-    if response.narrative:
-        scope = dm_config.scope or "global"
-        event_log.append(
-            Event(
-                tick=tick,
-                type="dm_narrative",
-                source="consequence",
-                detail=response.narrative,
-                ttl=3,
-                scope=scope,
-            )
         )

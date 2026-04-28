@@ -20,6 +20,7 @@ from worldseed.server.app import create_app
 
 from .conftest import (
     CONFIGS_DIR,
+    claim_all_preset_agents,
     get_free_port,
     start_uvicorn,
     stop_uvicorn,
@@ -111,17 +112,21 @@ class TestLifecycle:
         assert data["tick"] >= 0
         assert data["scene"] == "doomsday_bunker"
 
-        # Start ticks manually
-
+        # Start ticks manually — claim presets first since no real gateway runs in tests.
+        claim_all_preset_agents(lobby_server["app"])
         httpx.post(f"{base}/api/tick/resume")
         time.sleep(1)
         r = httpx.get(f"{base}/health")
         assert r.json()["running"] is True
 
-    def test_agents_auto_registered(self, lobby_server: dict[str, Any]) -> None:
-        """After start, GET /characters shows agents as claimed."""
+    def test_agents_claimed_after_register(self, lobby_server: dict[str, Any]) -> None:
+        """After start + register, GET /characters shows agents as claimed."""
         base = lobby_server["base_url"]
         _start_world(base)
+        # /api/world/start only prepopulates entities/profiles. Real claiming
+        # happens via gateway WS register; mirror that here so tests can assert
+        # the post-register state.
+        claim_all_preset_agents(lobby_server["app"])
 
         r = httpx.get(f"{base}/characters")
         assert r.status_code == 200
@@ -130,7 +135,6 @@ class TestLifecycle:
         # Bunker has old_chen, xiao_li, doctor_wang
         ids = {c["id"] for c in chars}
         assert "old_chen" in ids
-        # All should be claimed since register_from_config runs on start
         for c in chars:
             assert c["claimed"] is True, f"Agent {c['id']} should be claimed"
 

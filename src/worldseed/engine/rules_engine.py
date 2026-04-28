@@ -137,7 +137,7 @@ class RulesEngine:
                 detail=event_cfg.detail,
                 ttl=event_cfg.ttl,
                 scope=event_cfg.scope,
-                event_target=event_cfg.target,
+                event_target=event_cfg.event_target,
                 push=event_cfg.push,
                 highlight=event_cfg.highlight,
             )

@@ -20,8 +20,7 @@ from worldseed.server.models import (
 from worldseed.server.routes._shared import (
     _eng,
     _require_agent,
-    agent_tokens,
-    tokens,
+    clear_tokens,
 )
 from worldseed.server.tick_runner import TickRunner
 from worldseed.server.websocket import ConnectionManager
@@ -266,8 +265,7 @@ def create_gm_router(app: FastAPI, ws_manager: ConnectionManager) -> APIRouter:
         app.state.tick_runner = new_tr
         app.state.run_id = new_run_id
 
-        tokens.clear()
-        agent_tokens.clear()
+        clear_tokens(app)
         app.state.agents_ready = set()
         app.state.initial_wakes_sent = False
 

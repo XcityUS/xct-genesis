@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from worldseed.server.routes._shared import _UI_DIR
 from worldseed.server.routes.agents import create_agents_router, register_websocket
 from worldseed.server.routes.dashboard import create_dashboard_router
+from worldseed.server.routes.director import create_director_router
 from worldseed.server.routes.gateway import create_gateway_router
 from worldseed.server.routes.gazette import create_gazette_router
 from worldseed.server.routes.gm import create_gm_router
@@ -32,6 +33,7 @@ def register_all_routes(app: FastAPI, ws_manager: ConnectionManager) -> None:
 
     # Include all routers
     app.include_router(create_dashboard_router(app, ws_manager))
+    app.include_router(create_director_router(app, ws_manager))
     app.include_router(create_world_router(app, ws_manager))
     app.include_router(create_gateway_router(app, ws_manager))
     app.include_router(create_settings_router(app, ws_manager))

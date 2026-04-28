@@ -530,9 +530,7 @@ async def _handle_narrate(
 ) -> None:
     """Handle narrator chapter submission — bypasses action pipeline."""
     if agent_id != "narrator":
-        await ws.send_json(
-            {"type": "narrate_error", "request_id": request_id, "detail": "Only narrator can narrate"}
-        )
+        await ws.send_json({"type": "narrate_error", "request_id": request_id, "detail": "Only narrator can narrate"})
         return
     params = {
         "title": msg.get("title", ""),
@@ -545,6 +543,4 @@ async def _handle_narrate(
     if isinstance(chapter, str):
         await ws.send_json({"type": "narrate_error", "request_id": request_id, "detail": chapter})
     else:
-        await ws.send_json(
-            {"type": "narrate_ok", "request_id": request_id, "chapter": chapter, "tick": engine.tick}
-        )
+        await ws.send_json({"type": "narrate_ok", "request_id": request_id, "chapter": chapter, "tick": engine.tick})

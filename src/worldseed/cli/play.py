@@ -1,4 +1,17 @@
-"""CLI subcommand: worldseed play — one-click dev/test."""
+"""CLI subcommand: worldseed play — start engine + server.
+
+Two modes:
+
+  --agent-runtime none      (default)
+    Bare engine + HTTP/WS server. Agents are driven externally by any runtime
+    that uses
+    POST /act + GET /perceive. Ticks auto-start. No OpenClaw, no gateway.
+
+  --agent-runtime openclaw  (legacy)
+    Auto-spawn the OpenClaw gateway, wire the WebSocket connector, wait
+    for preset agents to register via plugin, then start ticks. Useful
+    when you want plug-and-play agents without writing your own runtime.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +27,7 @@ import httpx
 import structlog
 import uvicorn
 
+from worldseed.cli._probe import wait_for_health
 from worldseed.world import WorldEngine
 
 log = structlog.get_logger()
@@ -23,13 +37,11 @@ def _clean_stale_worldseed_sessions(current_run_id: str) -> None:
     """Remove old WorldSeed session entries from OpenClaw's session store.
 
     Session keys look like ``agent:{id}:worldseed:{run_id}``.
-    We keep entries whose run_id matches *current_run_id* (or that
-    aren't WorldSeed sessions at all) and drop everything else.
+    Only invoked when --agent-runtime openclaw is selected.
     """
     import json
     import re
 
-    # Scan all agent session stores (main + per-agent slug dirs like ws-*).
     agents_dir = Path.home() / ".openclaw" / "agents"
     if not agents_dir.is_dir():
         return
@@ -64,12 +76,14 @@ def _clean_stale_worldseed_sessions(current_run_id: str) -> None:
 
 
 def play(args: argparse.Namespace) -> None:
-    """One-click dev/test: server + register + budget."""
-    from worldseed.connector.websocket import WebSocketConnector
+    """Start engine + server. Mode chosen by --agent-runtime."""
     from worldseed.dm.providers.llm import LiteLLMDMProvider
     from worldseed.persistence import RunRecorder
     from worldseed.scene.config import load_config as _load_config
     from worldseed.server.app import create_app
+
+    runtime = getattr(args, "agent_runtime", "none")
+    use_openclaw = runtime == "openclaw"
 
     config_path = Path(args.config)
     if not config_path.exists():
@@ -81,7 +95,6 @@ def play(args: argparse.Namespace) -> None:
         fallback_model=args.dm_fallback,
     )
 
-    # Create run recorder
     run_id = secrets.token_hex(4)
     scene_cfg = _load_config(config_path)
     recorder = RunRecorder(
@@ -92,13 +105,10 @@ def play(args: argparse.Namespace) -> None:
         resolved_config=scene_cfg.model_dump(),
     )
 
-    # Language: CLI flag overrides auto-detection
     from worldseed.gazette.context import detect_language
 
     desc = scene_cfg.scene.description
     detected = detect_language({"scene": {"description": desc}})
-    # Only force language instruction for non-English scenes (e.g. zh).
-    # English is the default — no need to add "MUST respond in English" to SOUL.
     language = args.language or (detected if detected != "en" else "")
 
     engine = WorldEngine(
@@ -109,19 +119,22 @@ def play(args: argparse.Namespace) -> None:
     )
     engine.prepopulate_agents()
 
+    # Default mode: ticks start with the server, no external connector.
+    # OpenClaw mode: ticks start after the gateway brings agents online.
     app = create_app(
         engine=engine,
         tick_interval=engine.config.scene.tick_interval,
         run_id=run_id,
         port=args.port,
-        auto_start_tick=False,  # tick starts via dashboard or auto after agents connect
+        auto_start_tick=not use_openclaw,
     )
 
-    # Wire WebSocket connector
-    ws_conn = WebSocketConnector(app.state.ws_manager)
-    app.state.tick_runner.connector = ws_conn
+    if use_openclaw:
+        from worldseed.connector.websocket import WebSocketConnector
 
-    # Budget tracking
+        ws_conn = WebSocketConnector(app.state.ws_manager)
+        app.state.tick_runner.connector = ws_conn
+
     max_dm = args.max_dm_calls
     max_ticks = args.max_ticks
     timeout_min = args.timeout
@@ -130,31 +143,14 @@ def play(args: argparse.Namespace) -> None:
     port = args.port
     base_url = f"http://127.0.0.1:{port}"
 
-    # Start uvicorn in a thread
-    uvi_config = uvicorn.Config(
-        app,
-        host="127.0.0.1",
-        port=port,
-        log_level="warning",
-    )
+    uvi_config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
     server = uvicorn.Server(uvi_config)
-
-    server_thread = threading.Thread(
-        target=server.run,
-        daemon=True,
-    )
+    server_thread = threading.Thread(target=server.run, daemon=True)
     server_thread.start()
 
-    # Wait for server to be ready
-    for _ in range(30):
-        try:
-            r = httpx.get(f"{base_url}/health", timeout=1)
-            if r.status_code == 200:
-                break
-        except Exception:
-            pass
-        time.sleep(0.5)
-    else:
+    try:
+        wait_for_health(base_url, attempts=30, delay=0.5)
+    except RuntimeError:
         log.error("server_start_timeout")
         sys.exit(1)
 
@@ -163,53 +159,41 @@ def play(args: argparse.Namespace) -> None:
     log.info(
         "play_started",
         scene=engine.config.scene.id,
+        agent_runtime=runtime,
         agents=agent_count,
         dm_model=args.dm_model,
         max_ticks=max_ticks,
         max_dm_calls=max_dm,
         timeout_min=timeout_min,
-        dashboard=f"http://127.0.0.1:{port}",
+        dashboard=base_url,
     )
 
-    # Clean stale WorldSeed sessions from OpenClaw's session store.
-    # Each run creates new session entries (agent:{id}:worldseed:{run_id}).
-    # Without cleanup, the store grows unboundedly across runs, causing the
-    # gateway to load tens of MB into memory on every agent wake.
-    # Must happen BEFORE gateway starts — no concurrent readers.
-    _clean_stale_worldseed_sessions(run_id)
+    if use_openclaw:
+        _clean_stale_worldseed_sessions(run_id)
 
-    # Auto-start: spawn gateway (via server), send initial wakes, start ticks.
-    # Gateway lifecycle is managed entirely by the server (_spawn_gateway),
-    # except shutdown cleanup (play.py calls _kill_gateway on exit).
-    # play.py only orchestrates the startup sequence via HTTP API.
-    def _auto_connect_agents() -> None:
-        """Start gateway + ticks, send initial wakes, wait for agents."""
-        # Step 1: tick/resume spawns gateway if needed, starts tick loop
-        try:
-            httpx.post(f"{base_url}/api/tick/resume", timeout=5)
-            log.info("tick_resume_ok")
-        except Exception:
-            log.warning("tick_resume_failed")
-            return
-
-        # Step 2: wait for agents to register via plugin (worldseed_register).
-        # Ticks auto-start once all preset agents register (maybe_auto_start_ticks).
-        expected = len(engine.config.agents)
-        for _ in range(120):
+        def _auto_connect_agents() -> None:
             try:
-                r = httpx.get(f"{base_url}/health", timeout=2)
-                ready = len(r.json().get("agents", {}).get("ready", []))
-                if ready >= expected:
-                    log.info("all_agents_ready", ready=ready)
-                    break
+                httpx.post(f"{base_url}/api/tick/resume", timeout=5)
+                log.info("tick_resume_ok")
             except Exception:
-                pass
-            time.sleep(0.5)
-        else:
-            log.warning("agents_ready_timeout")
+                log.warning("tick_resume_failed")
+                return
 
-    connect_thread = threading.Thread(target=_auto_connect_agents, daemon=True)
-    connect_thread.start()
+            expected = len(engine.config.agents)
+            for _ in range(120):
+                try:
+                    r = httpx.get(f"{base_url}/health", timeout=2)
+                    ready = len(r.json().get("agents", {}).get("ready", []))
+                    if ready >= expected:
+                        log.info("all_agents_ready", ready=ready)
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.5)
+            else:
+                log.warning("agents_ready_timeout")
+
+        threading.Thread(target=_auto_connect_agents, daemon=True).start()
 
     config_max_ticks = engine.config.scene.max_ticks
     effective_max_ticks = (
@@ -217,10 +201,12 @@ def play(args: argparse.Namespace) -> None:
     )
 
     print(f"\n  WorldSeed play: {engine.config.scene.id}")
-    print(f"  Run: {run_id} (saved to ~/.worldseed/runs/{run_id})")
-    print(f"  Dashboard: http://127.0.0.1:{port}")
-    print(f"  Agents: {agent_count}")
-    print(f"  DM: {args.dm_model}")
+    print(f"  Run id:    {run_id}")
+    print(f"  Run store: ~/.worldseed/runs/{run_id}")
+    print(f"  Server:    {base_url}")
+    print(f"  Agents:    {agent_count}")
+    print(f"  Runtime:   {runtime}")
+    print(f"  DM:        {args.dm_model or '(none)'}")
     print(f"  Max ticks: {effective_max_ticks or 'unlimited'}")
     if effective_max_ticks and not max_ticks:
         print(
@@ -231,9 +217,19 @@ def play(args: argparse.Namespace) -> None:
         print(f"  Max DM calls: {max_dm}")
     if timeout_min:
         print(f"  Timeout: {timeout_min}m")
+
+    if not use_openclaw:
+        print()
+        print("  [agent runtime: none] Engine + server are up. To run agents:")
+        print(f"    1. python scripts/init_workspace.py --scenario {config_path} \\")
+        print("           --workspace ~/.worldseed/workspaces/<run_id>")
+        print(f"    2. POST {base_url}/register for each preset agent")
+        print(f"    3. spawn subagents with WORLDSEED_URL={base_url} and")
+        print("       WORLDSEED_AGENT_ID=<their id>; they use ws.py to act/perceive")
+        print(f"    4. watcher long-polls {base_url}/api/director/signals")
+
     print("  Press Ctrl+C to stop.\n")
 
-    # Monitor loop — check budget limits
     shutdown = threading.Event()
 
     def handle_signal(sig: int, frame: object) -> None:
@@ -262,12 +258,11 @@ def play(args: argparse.Namespace) -> None:
                     reason = f"timeout_reached ({round(elapsed, 1)}m)"
 
             if reason:
-                # Pause tick runner — server stays up for dashboard
                 log.info("budget_reached_pausing", reason=reason)
                 httpx.post(f"{base_url}/api/tick/pause", timeout=2)
                 paused = True
                 print(f"\n  Paused: {reason}")
-                print(f"  Dashboard still live at http://127.0.0.1:{port}")
+                print(f"  Server still live at {base_url}")
                 print("  Press Ctrl+C to shut down.\n")
     finally:
         print("\n  Shutting down...")
@@ -278,9 +273,9 @@ def play(args: argparse.Namespace) -> None:
             agent_count=len(engine.get_registered_agents()),
         )
         server.should_exit = True
-        # Kill gateway — server owns the process via app.state.gateway_proc
-        from worldseed.server.routes._shared import _kill_gateway
+        if use_openclaw:
+            from worldseed.server.routes._shared import _kill_gateway
 
-        _kill_gateway(app)
+            _kill_gateway(app)
         server_thread.join(timeout=5)
         print("  Done.")

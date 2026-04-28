@@ -18,15 +18,35 @@ class EventLog:
 
     def __init__(self) -> None:
         self._events: list[Event] = []
+        self._total_appended: int = 0  # monotonic — survives TTL cleanup
 
     def append(self, event: Event) -> None:
         """Add an event to the in-memory log."""
         self._events.append(event)
+        self._total_appended += 1
 
     @property
     def size(self) -> int:
-        """Number of events in the log."""
+        """Number of events currently in the log (after TTL cleanup)."""
         return len(self._events)
+
+    @property
+    def total_appended(self) -> int:
+        """Total events ever appended; never decreases on TTL cleanup.
+
+        Use this as a cursor when you need to count new events across ticks
+        — `len(self._events)` would silently shrink and miscount.
+        """
+        return self._total_appended
+
+    def seed_total_appended(self, value: int) -> None:
+        """Restore the monotonic counter from a saved snapshot.
+
+        Pause/resume only re-appends live (non-expired) events, so the raw
+        append count would reset to that smaller number. Call this with the
+        saved value so director cursors stay aligned across resume.
+        """
+        self._total_appended = max(self._total_appended, value)
 
     def get_events(
         self,
@@ -40,8 +60,6 @@ class EventLog:
         if event_type is not None:
             result = [e for e in result if e.type == event_type]
         return result
-
-    _MAX_PERMANENT = 500
 
     def cleanup(self, current_tick: int) -> None:
         """Remove events whose TTL has expired.

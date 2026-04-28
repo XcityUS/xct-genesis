@@ -74,9 +74,28 @@ def create_app(
         from worldseed.server.routes._shared import _update_openclaw_config
 
         _update_openclaw_config(port)
+
+        # Scene-specific startup hook. Keep the engine scene-agnostic by
+        # dispatching via scene id — the scene module owns its own bootstrap.
+        scene_worker = None
+        if engine is not None and engine.config.scene.id == "autoresearch":
+            import structlog as _sl
+
+            _log = _sl.get_logger()
+            _log.info("autoresearch_scene_setup_starting")
+            from worldseed.autoresearch.bootstrap import bootstrap_workspace
+            from worldseed.autoresearch.worker import AutoresearchWorker
+
+            bootstrap_workspace()
+            scene_worker = AutoresearchWorker(engine.state, engine.event_log, recorder=engine.recorder)
+            scene_worker.start()
+            _log.info("autoresearch_worker_started")
+
         if app.state.tick_runner is not None and app.state.auto_start_tick:
             await app.state.tick_runner.start()
         yield
+        if scene_worker is not None:
+            await scene_worker.stop()
         if app.state.tick_runner is not None:
             await app.state.tick_runner.stop()
             active_connector = app.state.tick_runner.connector
@@ -96,6 +115,10 @@ def create_app(
     app.state.agents_ready = set()
     app.state.initial_wakes_sent = False
     app.state.auto_start_tick = auto_start_tick
+
+    from worldseed.server.routes._shared import init_token_state
+
+    init_token_state(app)
     # Demo mode: WORLDSEED_DEMO="zh:abc123,en:def456" or "abc123" (single)
     demo_raw = os.environ.get("WORLDSEED_DEMO", "")
     demo_runs: dict[str, str] = {}

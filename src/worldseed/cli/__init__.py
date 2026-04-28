@@ -1,4 +1,4 @@
-"""CLI entry point — worldseed [play|validate|runs]."""
+"""CLI entry point — worldseed [run|play|validate|runs]."""
 
 from __future__ import annotations
 
@@ -20,11 +20,41 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command")
 
     # play
+    rp = sub.add_parser(
+        "run",
+        help="One-command MAIN launcher: server + workspace + agent activation.",
+    )
+    rp.add_argument("config", help="Scene config YAML")
+    rp.add_argument("--workspace", default=None, help="Workspace path")
+    rp.add_argument("--run-id", default=None, help="Workspace/run label")
+    rp.add_argument("--host", default="127.0.0.1", help="Bind address")
+    rp.add_argument("--port", type=int, default=8000, help="Port")
+    rp.add_argument("--force", action="store_true", help="Overwrite generated workspace files")
+    rp.add_argument(
+        "--dm-model",
+        default=os.environ.get("WORLDSEED_DM_MODEL", ""),
+        help="DM model (default: $WORLDSEED_DM_MODEL)",
+    )
+    rp.add_argument("--dm-fallback", default=None, help="Fallback model")
+    rp.add_argument("--max-ticks", type=int, default=None, help="Stop after N ticks")
+    rp.add_argument(
+        "--language",
+        default=None,
+        help="Content language (e.g. zh, en). Auto-detected if omitted.",
+    )
+
     pp = sub.add_parser(
         "play",
-        help="One-click: server + agents + gateway",
+        help="Start engine + server. Default: bare runtime for external MAIN agents.",
     )
     pp.add_argument("config", help="Scene config YAML")
+    pp.add_argument(
+        "--agent-runtime",
+        choices=("none", "openclaw"),
+        default="none",
+        help="none (default): bare engine + server, agents driven externally via /act. "
+        "openclaw: legacy auto-spawn OpenClaw gateway + WebSocket connector.",
+    )
     pp.add_argument(
         "--dm-model",
         default=os.environ.get("WORLDSEED_DM_MODEL", ""),
@@ -62,7 +92,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.command == "play":
+    if args.command == "run":
+        from worldseed.cli.run import run
+
+        run(args)
+    elif args.command == "play":
         from worldseed.cli.play import play
 
         play(args)

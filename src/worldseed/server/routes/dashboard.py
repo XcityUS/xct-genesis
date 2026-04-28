@@ -58,10 +58,13 @@ def create_dashboard_router(app: FastAPI, ws_manager: ConnectionManager) -> APIR
             state = "live"
         expected_ids = engine.registry.expected_agent_ids() if engine else set()
         ready_set = app.state.agents_ready & expected_ids
+        claimed_set = set(engine.get_registered_agents()) & expected_ids if engine else set()
         agents_info = {
             "total": len(expected_ids),
             "ready": sorted(ready_set),
             "pending": sorted(expected_ids - ready_set),
+            "claimed": sorted(claimed_set),
+            "unclaimed": sorted(expected_ids - claimed_set),
         }
         settings = app.state.settings
         return {

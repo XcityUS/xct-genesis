@@ -571,7 +571,6 @@ class TestInvalidNarratorStyle:
     def test_invalid_narrator_rejected(self) -> None:
         """Pydantic's Literal type should reject unknown narrator styles."""
         with pytest.raises(Exception):
-            # narrator is NarratorConfig | bool
             _minimal_scene(narrator="invalid_style")  # type: ignore[arg-type]
 
     def test_valid_narrator_styles_accepted(self) -> None:
@@ -594,7 +593,6 @@ class TestInvalidNarratorStyle:
     def test_narrator_false_accepted(self) -> None:
         """narrator=False should be valid (no narrator)."""
         config = _minimal_scene(narrator=False)
-        assert config.narrator is False
-        # No narrator setup should have happened
+        assert config.narrator is None
         engine = _make_engine(config)
         assert engine.state.get("narrator") is None

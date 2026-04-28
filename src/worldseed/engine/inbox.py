@@ -77,6 +77,11 @@ class Inbox:
     def last_perceive_tick(self, value: int) -> None:
         self._last_perceive_tick = value
 
+    @property
+    def current_state(self) -> InboxSnapshot | None:
+        """Latest world snapshot delivered by the Perceiver, if any."""
+        return self._current_state
+
     def update_state(self, snapshot: InboxSnapshot) -> None:
         """Overwrite current state snapshot."""
         self._current_state = snapshot

@@ -14,8 +14,13 @@ import copy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from worldseed import action_dispatch
+from worldseed import agent_view as agent_view_helpers
+from worldseed import narrator as narrator_helpers
+from worldseed import transient as transient_helpers
 from worldseed.agent_registry import AgentRegistry
 from worldseed.engine.action_queue import ActionQueue
+from worldseed.engine.director import DirectorRuntime, DirectorSignal, PendingDMRequest
 from worldseed.engine.event_log import EventLog
 from worldseed.engine.inbox import InboxManager, InboxWhisper
 from worldseed.engine.rules_engine import ActionResult
@@ -23,7 +28,6 @@ from worldseed.engine.state_store import StateStore
 from worldseed.engine.tick import TickEngine
 from worldseed.engine.wakeup import WakeupEvaluator, WakeupResult
 from worldseed.models.action import ActionSubmission
-from worldseed.models.event import Event
 from worldseed.persistence import NullRecorder
 from worldseed.protocol.agent import AgentPerception, build_perception
 from worldseed.scene.config import load_config
@@ -62,6 +66,9 @@ class WorldEngine:
         self._inbox_manager = InboxManager()
         self.registry = AgentRegistry(self._config, self.state)
 
+        self._wakeup = WakeupEvaluator()
+        self._director = DirectorRuntime.from_config(self._config.director)
+
         self._tick_engine = TickEngine(
             self._config,
             self.state,
@@ -71,355 +78,74 @@ class WorldEngine:
             dm_provider=dm_provider,
             recorder=self.recorder,
             registry=self.registry,
+            director_runtime=self._director,
         )
         self.language = language
-        if language and self._tick_engine._dm_builder:
-            self._tick_engine._dm_builder.language = language
-
-        self._wakeup = WakeupEvaluator()
+        if language:
+            self._tick_engine.set_language(language)
 
         if self._config.narrator:
             self._setup_narrator()
 
         populate(self._config, self.state)
 
-    # ── Narrator style presets (language-neutral) ──────────────────
-    _NARRATOR_STYLES: dict[str, str] = {
-        "storyteller": (
-            "title: A chapter title that names the core tension or turning point. "
-            "Use a balanced pair of phrases separated by a slash or dash if natural.\n"
-            "body: Third-person serial narrator. 2-4 short paragraphs. "
-            "Build tension — setup, escalation, cliffhanger. "
-            "End mid-action or with an unanswered question. "
-            "Every sentence carries new information. Cut filler.\n"
-            "asides: Things the reader can see but characters cannot. "
-            "1-2 sentences each. State the hidden truth plainly.\n"
-            "whisper_options: A pointed hint derived from the aside. "
-            "Short, actionable, specific to the target agent."
-        ),
-        "poet": (
-            "title: A single image that holds the chapter's tension. "
-            "No punctuation. 3-5 words maximum.\n"
-            "body: One image per line. 4-8 lines total. "
-            "No explanation — juxtaposition does the work. "
-            "White space between stanzas. Concrete nouns, no adjectives. "
-            "Let the gap between images carry the meaning.\n"
-            "asides: A paired image — the visible and the hidden, side by side. "
-            "One line each.\n"
-            "whisper_options: A quiet note slid under the door. "
-            "One image, not an instruction."
-        ),
-        "intel": (
-            "title: Wire-service headline. Verb-led, no articles, present tense. "
-            "Maximum 12 words.\n"
-            "body: Bullet-point briefing. One dash per fact. "
-            "Lead with highest-impact item. No adjectives, no commentary, "
-            "no atmosphere. Just what happened, who did it, what changed. "
-            "4-8 bullet points.\n"
-            "asides: Analyst's contradiction log. "
-            "State both sides in one flat sentence each. No editorial.\n"
-            "whisper_options: Operational recommendation. "
-            "One short imperative sentence."
-        ),
-        "noir": (
-            "title: Short, atmospheric. A location, an object, or a mood. "
-            "Under 6 words.\n"
-            "body: Hard-boiled narrator voice. Short sentences. "
-            "Present tense where it adds tension. Weather and lighting as mood. "
-            "Everyone is hiding something — the narrator sees through it "
-            "but doesn't judge, just observes with weary precision. "
-            "2-3 paragraphs. Dry, clipped, no sentimentality.\n"
-            "asides: State what nobody else noticed. "
-            "Flat delivery, devastating implication. One sentence each.\n"
-            "whisper_options: A terse warning. "
-            "The kind of thing someone mutters without making eye contact."
-        ),
-        "gossip": (
-            "title: Starts with a rumor hook — 'Did you hear...', "
-            "'Word is...', 'Apparently...'. Conversational, breathless.\n"
-            "body: Second-hand narration. Mix confirmed facts with speculation, "
-            "hedging, and 'I heard from someone who...'. "
-            "The narrator is piecing it together from fragments and may get "
-            "details wrong. Breathless, digressive, occasionally self-correcting. "
-            "2-4 paragraphs.\n"
-            "asides: 'The part nobody is talking about:' or similar. "
-            "Gossip-column energy but the content is real.\n"
-            "whisper_options: 'You didn't hear this from me, but...' "
-            "followed by a specific, actionable tip."
-        ),
-        "conspiracy": (
-            "title: A connection statement — 'X happened right after Y' "
-            "or 'The timeline doesn't add up'. Declarative, urgent.\n"
-            "body: Pattern-finding narrator. Every event is evidence. "
-            "Draw explicit connections between events that others missed. "
-            "Use phrases like 'Notice the timing', 'This is not a coincidence'. "
-            "Present tense for urgency. 2-4 paragraphs. "
-            "The narrator is building a case — structured, logical, "
-            "but seeing patterns everywhere.\n"
-            "asides: A connection between two seemingly unrelated events. "
-            "Each aside links two specific facts.\n"
-            "whisper_options: A pointed question that forces the target "
-            "to reconsider what they know."
-        ),
-        "bureaucrat": (
-            "title: Formal incident report header — 'Incident Report: [subject]' "
-            "or 'Memo Re: [subject]'. Dry, institutional.\n"
-            "body: Official documentation voice. Field labels, reference numbers, "
-            "passive voice. The narrator genuinely believes the paperwork matters "
-            "more than the events. Emotional situations described in procedural "
-            "language — the gap between the form and reality IS the voice. "
-            "2-4 paragraphs structured as report sections.\n"
-            "asides: Filed as footnotes or addenda. The bureaucracy acknowledges "
-            "the problem exists but has no form for it.\n"
-            "whisper_options: A procedural recommendation that accidentally "
-            "contains real advice."
-        ),
-        "gameshow": (
-            "title: A round announcement — 'Round N: [dramatic question]' "
-            "or 'And behind door number N...'. Showmanship.\n"
-            "body: The world is a competition and the narrator is the host. "
-            "Agents are contestants. Every choice is a wager, every outcome "
-            "has a score. Dramatic pauses, consolation prizes for failures. "
-            "The host clearly has favorites. Cheerfully cruel about bad outcomes. "
-            "Present tense, high energy. 2-4 paragraphs.\n"
-            "asides: 'What our contestants don't know...' delivered with "
-            "theatrical relish.\n"
-            "whisper_options: A game-show hint — 'Psst, contestant [agent]: "
-            "you might want to check [specific thing] before the next round.'"
-        ),
-        "trickster": (
-            "title: A punchline or reversal — names the funniest or most absurd "
-            "thing that happened. Conversational, slightly gleeful.\n"
-            "body: The narrator is inside the chaos and loving it. "
-            "Not cynical or above it — genuinely amused by reversals, "
-            "collapsed plans, and unintended consequences. Quick, energetic prose. "
-            "Celebrates when the powerful trip. May address the reader directly. "
-            "Accurate but presented to maximize the comedy. 2-4 paragraphs.\n"
-            "asides: States the hidden truth with visible delight. "
-            "Not mean-spirited — finds the absurdity genuinely wonderful.\n"
-            "whisper_options: A gleeful tip delivered with a wink."
-        ),
-    }
+    # ── Narrator (delegated to worldseed.narrator) ──────────────────
 
     def _setup_narrator(self) -> None:
-        """Create narrator system agent. Chapters submitted via worldseed_narrate tool."""
-        from worldseed.models.config_schema import NarratorConfig
+        """Register the narrator system agent. Chapters submitted via worldseed_narrate."""
+        ncfg = self._config.narrator
+        if ncfg is None:
+            return
 
-        # Normalize bool True → default NarratorConfig
-        if self._config.narrator is True:
-            self._config.narrator = NarratorConfig()
-        ncfg: NarratorConfig = self._config.narrator  # type: ignore[assignment]
+        instructions = narrator_helpers.build_instructions(
+            scene_description=self._config.scene.description,
+            perception=self._config.perception,
+            ncfg=ncfg,
+            language=self.language,
+        )
 
-        # Build instructions for SOUL.md (gateway reads character.instructions)
-        instructions = self._build_narrator_instructions(ncfg)
-
-        # Register narrator as system agent (for wake scheduling via tick_runner)
-        # No narrate action injected — narrator uses worldseed_narrate tool directly
         if not self.registry.is_claimed("narrator"):
             self.register_agent(
                 agent_id="narrator",
                 properties={"chapter_count": 0, "_system": True, "_last_narrate_tick": -1},
-                character={
-                    "role": "narrator",
-                    "instructions": instructions,
-                },
+                character={"role": "narrator", "instructions": instructions},
                 omniscient=True,
                 system=True,
                 wake_on_push=ncfg.wake_on_push,
             )
             self.registry.update_think_interval("narrator", ncfg.interval)
 
-    def _build_narrator_instructions(self, ncfg: Any) -> str:
-        """Build narrator instructions for SOUL.md."""
-
-        if ncfg.prompt:
-            style_instruction = ncfg.prompt
-        else:
-            style_instruction = self._NARRATOR_STYLES.get(ncfg.style, "")
-
-        scene_desc = self._config.scene.description
-        perception = self._config.perception
-
-        visibility_text = ""
-        if perception.visibility:
-            rules = [r.model_dump(exclude_none=True) for r in perception.visibility]
-            visibility_text = (
-                "\n\nVISIBILITY RULES — agents can only see entities matching these conditions:\n"
-                + "\n".join(f"  - {r}" for r in rules)
-                + "\nYou (narrator) see everything. Agents do NOT."
-            )
-
-        hidden_text = ""
-        if perception.hidden_properties:
-            hidden_text = "\n\nHIDDEN PROPERTIES — only you can see these, agents cannot:\n" + ", ".join(
-                perception.hidden_properties
-            )
-
-        instructions = (
-            "You observe everything in this world and write structured chapter "
-            "summaries. Write as if the reader is watching a story unfold — "
-            "never refer to yourself, never use words like 'narrator' or "
-            "'narration' in your output.\n\n"
-            "WORKFLOW: On each wake you receive events since your last chapter. "
-            "Read them, then call worldseed_narrate with your chapter. "
-            "Do NOT call worldseed_perceive or worldseed_act — use only "
-            "worldseed_narrate. NEVER output text — no commentary, no "
-            "explanations. Text output wastes tokens.\n\n"
-            f"Scene: {scene_desc}"
-            f"{visibility_text}"
-            f"{hidden_text}\n\n"
-            "Each chapter covers only NEW events since your last chapter. "
-            "Never repeat previous content.\n\n"
-            "OUTPUT FIELDS (pass to worldseed_narrate):\n"
-            "- title: A chapter title that captures the core tension.\n"
-            "- tldr: One sentence that captures what happened this chapter.\n"
-            "- body: The narrative text. MAX 2-4 short paragraphs. "
-            "Be dense — every sentence must carry new information.\n"
-            "- asides: 0-3 asides to the reader. Things brewing under the "
-            "surface that the reader can see but the characters can't. "
-            "Keep each one 1-2 sentences. Separate with blank lines.\n"
-            "- whisper_options: One whisper per aside, matching by position. "
-            "Format: 'exact_agent_id: short note'. One per line."
-        )
-        if style_instruction:
-            instructions += "\n\nWriting style: " + style_instruction
-        if self.language:
-            from worldseed.dm.prompt import _language_display
-
-            lang_name = _language_display(self.language)
-            instructions += (
-                f"\n\nIMPORTANT: Write ALL text in {lang_name}, including titles, headings, and chapter names."
-            )
-
-        return instructions
-
     def set_narrator_style(self, style: str | None = None, prompt: str | None = None) -> None:
         """Reconfigure narrator style (or custom prompt) on a running world."""
         if prompt:
             style_instruction = prompt
         elif style:
-            style_instruction = self._NARRATOR_STYLES.get(style, "")
+            style_instruction = narrator_helpers.NARRATOR_STYLES.get(style, "")
         else:
             return
-
         profile = self.registry.get_profile("narrator")
-        if profile is None or not profile.character:
+        if profile is None:
             return
-
-        instructions = profile.character.get("instructions", "")
-        # Replace the style block: everything after "Writing style: " until next "\n\n" or end
-        marker = "\n\nWriting style: "
-        idx = instructions.find(marker)
-        if idx >= 0:
-            # Find end of style block (next double newline or end)
-            end = instructions.find("\n\n", idx + len(marker))
-            if end < 0:
-                end = len(instructions)
-            instructions = instructions[:idx] + marker + style_instruction + instructions[end:]
-        else:
-            # No style block yet — append before language line or at end
-            lang_marker = "\n\nIMPORTANT: Write ALL"
-            lang_idx = instructions.find(lang_marker)
-            if lang_idx >= 0:
-                instructions = instructions[:lang_idx] + marker + style_instruction + instructions[lang_idx:]
-            else:
-                instructions += marker + style_instruction
-
-        profile.character["instructions"] = instructions
+        narrator_helpers.replace_style_block(profile, style_instruction)
 
     def set_language(self, lang: str) -> None:
         """Update language for DM prompts and narrator."""
         self.language = lang
-        if self._tick_engine._dm_builder:
-            self._tick_engine._dm_builder.language = lang
-        self._update_narrator_language(lang)
-
-    def _update_narrator_language(self, lang: str) -> None:
-        """Update narrator character instructions with language directive."""
+        self._tick_engine.set_language(lang)
         profile = self.registry.get_profile("narrator")
-        if profile is None or not profile.character:
-            return
-        from worldseed.dm.prompt import _language_display
-
-        instructions = profile.character.get("instructions", "")
-        # Remove old language line
-        lines = [ln for ln in instructions.split("\n") if not ln.startswith("IMPORTANT: Write ALL")]
-        # Add new one
-        if lang:
-            lang_name = _language_display(lang)
-            lines.append(f"IMPORTANT: Write ALL text in {lang_name}, including titles, headings, and chapter names.")
-        profile.character["instructions"] = "\n".join(lines)
+        if profile is not None:
+            narrator_helpers.replace_language_line(profile, lang)
 
     def record_narration(self, params: dict[str, Any]) -> int | str:
-        """Record a narrator chapter directly — bypasses action pipeline.
-
-        Returns chapter number on success, error string on failure.
-        """
-        narrator_ent = self.state.get("narrator")
-        if narrator_ent is None:
-            return "Narrator entity not found"
-
-        # Double-narrate guard: reject if already narrated this tick
-        last_tick = narrator_ent.get("_last_narrate_tick", -1)
-        if last_tick == self.tick:
-            return "Already narrated this tick"
-
-        chapter: int = int(narrator_ent.get("chapter_count", 0)) + 1
-        self.state.update_property("narrator", "chapter_count", chapter)
-        self.state.update_property("narrator", "_last_narrate_tick", self.tick)
-
-        # Stream record — same format frontend expects
-        self.recorder.record(
-            "action",
-            self.tick,
-            agent_id="narrator",
-            action_type="narrate",
+        """Record a narrator chapter directly — bypasses action pipeline."""
+        return narrator_helpers.apply_narration(
+            state=self.state,
+            event_log=self.event_log,
+            inbox_manager=self._inbox_manager,
+            recorder=self.recorder,
+            tick=self.tick,
             params=params,
-            success=True,
-            highlight=True,
         )
-
-        # Highlight record
-        self.recorder.record(
-            "highlight",
-            self.tick,
-            label=params.get("title", ""),
-            source="narration",
-        )
-
-        # EventLog entry (permanent, admin scope)
-        title = params.get("title", "")
-        tldr = params.get("tldr", "")
-        self.event_log.append(
-            Event(
-                tick=self.tick,
-                type="narration",
-                source="narrator",
-                detail=f"{title}\n{tldr}",
-                ttl="permanent",
-                scope="admin",
-            )
-        )
-
-        # Deliver whispers to agents
-        whisper_options = params.get("whisper_options", "")
-        if whisper_options and self._inbox_manager is not None:
-            for line in whisper_options.strip().split("\n"):
-                parts = line.split(":", 1)
-                if len(parts) == 2:
-                    target_id = parts[0].strip()
-                    note = parts[1].strip()
-                    if note and self.state.get(target_id) is not None:
-                        self._inbox_manager.get_or_create(target_id).append_whisper(
-                            InboxWhisper(
-                                tick=self.tick,
-                                source="narrator",
-                                detail=note,
-                                type="narrator_hint",
-                            )
-                        )
-
-        return chapter
 
     @property
     def config(self) -> SceneConfig:
@@ -674,67 +400,7 @@ class WorldEngine:
         # Mechanical action: execute immediately, no queue
         if action_cfg is not None and action_cfg.dm is None:
             result = self._tick_engine._rules.process_action(submission, self.tick)
-            # Record to stream
-            rec_kwargs: dict[str, Any] = {
-                "agent_id": agent_id,
-                "action_type": action_type,
-                "params": resolved,
-                "success": result.success,
-                "reason": result.reason,
-            }
-            if result.success and action_cfg.highlight:
-                rec_kwargs["highlight"] = True
-            self.recorder.record("action", self.tick, **rec_kwargs)
-            if not result.success:
-                # Emit highlight for action rejection
-                detail = f"{agent_id} tried '{action_type}' but failed: {result.reason}"
-                self.event_log.append(
-                    Event(
-                        tick=self.tick,
-                        type="action_rejected",
-                        source=agent_id,
-                        detail=detail,
-                        ttl=5,
-                        scope="admin",
-                        highlight=True,
-                    )
-                )
-                self.recorder.record(
-                    "highlight",
-                    self.tick,
-                    label=detail,
-                    source="action_rejected",
-                )
-                if self._inbox_manager is not None:
-                    inbox = self._inbox_manager.get_or_create(agent_id)
-                    inbox.append_whisper(
-                        InboxWhisper(
-                            tick=self.tick,
-                            source="system",
-                            detail=(f"Your '{action_type}' action failed: {result.reason}"),
-                            type="action_failed",
-                        )
-                    )
-            # Record Layer 2 engine highlights (entity_created, etc.)
-            if result.success:
-                for evt in self.event_log.get_events(
-                    since_tick=self.tick,
-                ):
-                    eid = id(evt)
-                    seen = self._tick_engine._recorded_highlight_ids
-                    if evt.highlight and evt.type != "highlight" and eid not in seen:
-                        seen.add(eid)
-                        self.recorder.record(
-                            "highlight",
-                            self.tick,
-                            label=evt.detail,
-                            source=evt.type,
-                        )
-
-            # Refresh perceiver snapshot so perceive() shows updated state
-            if result.success and self._tick_engine._perceiver is not None:
-                self._tick_engine._perceiver.deliver(self.tick)
-
+            action_dispatch.apply_mechanical_result(self, action_cfg, submission, result)
             return result
 
         # DM action: queue for next tick's step_async
@@ -742,11 +408,15 @@ class WorldEngine:
 
     def step(self) -> list[ActionResult]:
         """Process one tick (sync — dm field skipped)."""
-        return self._tick_engine.step()
+        results = self._tick_engine.step()
+        self._observe_attention()
+        return results
 
     async def step_async(self) -> list[ActionResult]:
         """Process one tick with async DM support."""
-        return await self._tick_engine.step_async()
+        results = await self._tick_engine.step_async()
+        self._observe_attention()
+        return results
 
     @property
     def tick(self) -> int:
@@ -787,103 +457,17 @@ class WorldEngine:
 
         # If perceiver hasn't delivered yet, do a live deliver first
         # so the agent sees real visibility data (not empty)
-        if inbox.last_perceive_tick < 0 and self._tick_engine._perceiver is not None:
-            self._tick_engine._perceiver.deliver(self.tick)
+        perceiver = self._tick_engine.perceiver
+        if inbox.last_perceive_tick < 0 and perceiver is not None:
+            perceiver.deliver(self.tick)
 
         data = inbox.read()
         options = self._build_action_options(agent_id)
         return build_perception(data, options)
 
     def _build_action_options(self, agent_id: str) -> dict[str, dict[str, Any]]:
-        """Build compact action options with resolved enum values.
-
-        Returns {action_name: {param_name: [enum_values] or "type"}}.
-        $visible reads from the inbox snapshot (already computed by
-        perceiver.deliver()), avoiding duplicate DSL evaluation.
-        """
-        from worldseed.dsl.path_resolver import resolve
-
-        # Read visible IDs from inbox snapshot (computed by perceiver.deliver)
-        visible_ids: list[str] | None = None
-
-        available = self.actions_available_to(agent_id)
-        options: dict[str, dict[str, Any]] = {}
-        ctx = {"agent_id": agent_id, "action_params": {}, "tick": self.tick}
-
-        for name, action_cfg in self._config.actions.items():
-            # Filter by available_to — skip actions this agent can't use
-            if name not in available:
-                continue
-
-            params: dict[str, Any] = {}
-            for p in action_cfg.params:
-                if p.enum_from and p.type == "entity_ref":
-                    if p.enum_from == "$visible":
-                        # Lazy resolve from inbox snapshot (once per call)
-                        if visible_ids is None:
-                            inbox = self._inbox_manager.get_or_create(agent_id)
-                            state = inbox._current_state
-                            if state is not None:
-                                visible_ids = sorted(
-                                    list(state.visible_entities.keys()) + list(state.visible_agents.keys())
-                                )
-                            else:
-                                visible_ids = []
-                        filtered = list(visible_ids)
-                        if p.enum_filter and filtered:
-                            filtered = self._apply_enum_filter(filtered, p.enum_filter)
-                        params[p.name] = filtered if filtered else p.type
-                    else:
-                        val = resolve(p.enum_from, self.state, ctx)
-                        if isinstance(val, list):
-                            resolved = [str(v) for v in val]
-                        elif isinstance(val, str):
-                            resolved = [val]
-                        else:
-                            resolved = []
-                        if p.enum_filter and resolved:
-                            resolved = self._apply_enum_filter(resolved, p.enum_filter)
-                        params[p.name] = resolved if resolved else p.type
-                else:
-                    params[p.name] = p.type
-            options[name] = params
-        return options
-
-    def _apply_enum_filter(
-        self,
-        entity_ids: list[str],
-        enum_filter: dict[str, Any],
-    ) -> list[str]:
-        """Filter entity IDs by matching properties from StateStore.
-
-        Each (key, value) in enum_filter must match:
-          - "type" checks entity.type
-          - "id" checks entity.id
-          - all other keys check entity properties
-        An entity passes only if ALL filter conditions match.
-        """
-        result: list[str] = []
-        for eid in entity_ids:
-            entity = self.state.get(eid)
-            if entity is None:
-                continue
-            match = True
-            for key, expected in enum_filter.items():
-                if key == "type":
-                    if entity.type != expected:
-                        match = False
-                        break
-                elif key == "id":
-                    if entity.id != expected:
-                        match = False
-                        break
-                else:
-                    if entity.get(key) != expected:
-                        match = False
-                        break
-            if match:
-                result.append(eid)
-        return result
+        """Compact action options with resolved enum values for one agent."""
+        return agent_view_helpers.build_action_options(self, agent_id)
 
     def read_inbox(self, agent_id: str) -> dict[str, Any]:
         """Read raw inbox data. Prefer perceive() for typed output."""
@@ -972,6 +556,78 @@ class WorldEngine:
         """Evaluate wakeup for all agents."""
         return self._wakeup.evaluate_all(self._inbox_manager)
 
+    @property
+    def inbox_manager(self) -> InboxManager:
+        """Per-agent inbox manager. Public so out-of-process resolvers can deliver whispers."""
+        return self._inbox_manager
+
+    def refresh_perception_and_observe(self) -> None:
+        """Re-deliver perception snapshots and run director observation.
+
+        Used by paths that mutate state outside the normal tick (e.g. external
+        DM resolve) so observers see the new state on their next perceive.
+        """
+        perceiver = self._tick_engine.perceiver
+        if perceiver is not None:
+            perceiver.deliver(self.tick)
+        self._observe_attention()
+
+    # ------------------------------------------------------------------
+    # Director-signal facade
+    # ------------------------------------------------------------------
+
+    def director_enabled(self) -> bool:
+        """True when SceneConfig.director.enabled = true."""
+        return self._director.enabled
+
+    def peek_director_signals(
+        self,
+        limit: int | None = None,
+        types: list[str] | None = None,
+    ) -> list[DirectorSignal]:
+        """Pending director signals, FIFO. Does not drain."""
+        return self._director.peek_signals(
+            limit=limit,
+            types=types,  # type: ignore[arg-type]
+        )
+
+    def ack_director_signal(self, signal_id: str) -> bool:
+        """Mark an urgent or checkpoint signal as acked."""
+        return self._director.ack_signal(signal_id)
+
+    def get_director_dm_request(self, request_id: str) -> PendingDMRequest | None:
+        return self._director.get_dm_request(request_id)
+
+    def director_runtime(self) -> DirectorRuntime:
+        """Direct handle for the API layer; do not bypass for normal use."""
+        return self._director
+
+    def resolve_director_dm_request(
+        self,
+        request_id: str,
+        narrative: str,
+        effects_raw: list[dict[str, Any]],
+    ) -> tuple[bool, str]:
+        """Apply an external DM judgment for a pending director DM request."""
+        from worldseed import director_resolver
+
+        return director_resolver.resolve(self, request_id, narrative, effects_raw)
+
+    def _observe_attention(self) -> None:
+        """Hook director runtime to evaluate urgent + checkpoint conditions.
+
+        Called after any state-mutating engine path. No-op when director
+        is disabled. Does not drain inboxes or notify agents.
+        """
+        if not self._director.enabled:
+            return
+        self._director.observe_attention(
+            tick=self.tick,
+            event_log=self.event_log,
+            inbox_manager=self._inbox_manager,
+            wakeup_results=self.get_wakeup_results(),
+        )
+
     # ------------------------------------------------------------------
     # State persistence
     # ------------------------------------------------------------------
@@ -1013,10 +669,11 @@ class WorldEngine:
             self.state.add(entity)
 
         # Restore tick and counters
-        self._tick_engine._tick = tick
-        counters = self.recorder.load_counters()
-        if counters:
-            self._tick_engine._dm_call_count = counters.get("dm_call_count", 0)
+        counters = self.recorder.load_counters() or {}
+        self._tick_engine.restore_state(
+            tick=tick,
+            dm_call_count=counters.get("dm_call_count", 0),
+        )
 
         # Mark agents as claimed in registry (entity already in StateStore)
         from worldseed.models.config_schema import AgentConfig as _AC
@@ -1056,104 +713,12 @@ class WorldEngine:
         if transient:
             self._restore_transient(transient)
 
-    # ------------------------------------------------------------------
-    # Transient state serialization
-    # ------------------------------------------------------------------
+    # ── Transient state serialization (delegated to worldseed.transient) ──
 
     def _collect_transient(self) -> dict[str, Any]:
-        """Collect in-memory transient state for persistence."""
-        te = self._tick_engine
-        inbox_mgr = te._inbox_manager
-
-        # Inbox: per-agent pending events and DMs
-        inboxes: dict[str, Any] = {}
-        if inbox_mgr is not None:
-            for aid, inbox in inbox_mgr.all_inboxes().items():
-                events = [e.to_dict() for e in inbox.peek_events()]
-                dms = [m.to_dict() for m in inbox._whispers]
-                if events or dms:
-                    inboxes[aid] = {"events": events, "whispers": dms}
-
-        # Action queue: pending actions
-        pending_actions = [
-            {
-                "agent_id": a.agent_id,
-                "action_type": a.action_type,
-                "params": a.params,
-                "tick_submitted": a.tick_submitted,
-            }
-            for a in te._queue._queue
-        ]
-
-        # Think intervals: per-agent wake frequency
-        intervals = dict(self.registry._think_intervals)
-
-        # Recent events: for DM target_history and consequence context
-        recent_events = [
-            {
-                "tick": e.tick,
-                "type": e.type,
-                "source": e.source,
-                "detail": e.detail,
-                "ttl": e.ttl,
-                "scope": e.scope,
-                "target": e.target,
-            }
-            for e in te._event_log.get_events()
-        ]
-
-        return {
-            "inboxes": inboxes,
-            "pending_actions": pending_actions,
-            "think_intervals": intervals,
-            "recent_events": recent_events,
-        }
+        """Snapshot pause/resume state into a JSON-serializable dict."""
+        return transient_helpers.collect(self)
 
     def _restore_transient(self, data: dict[str, Any]) -> None:
-        """Restore in-memory transient state from persisted data."""
-        from worldseed.models.action import ActionSubmission
-        from worldseed.models.event import Event
-
-        te = self._tick_engine
-        inbox_mgr = te._inbox_manager
-
-        # Restore inboxes — only DMs, not events.
-        # Events are restored into EventLog (below) and perceiver
-        # will deliver them to inboxes on next tick. Restoring into
-        # both would cause duplicates.
-        if inbox_mgr is not None:
-            for aid, inbox_data in data.get("inboxes", {}).items():
-                inbox = inbox_mgr.get_or_create(aid)
-                for m in inbox_data.get("whispers", []):
-                    inbox.append_whisper(InboxWhisper(**m))
-                # Set last_perceive_tick so perceiver doesn't
-                # re-deliver already-seen events
-                inbox.last_perceive_tick = self.tick
-
-        # Restore pending actions
-        for a in data.get("pending_actions", []):
-            sub = ActionSubmission(
-                agent_id=a["agent_id"],
-                action_type=a["action_type"],
-                params=a.get("params", {}),
-                tick_submitted=a.get("tick_submitted", 0),
-            )
-            te._queue._queue.append(sub)
-
-        # Restore think intervals
-        for aid, interval in data.get("think_intervals", {}).items():
-            self.registry._think_intervals[aid] = interval
-
-        # Restore recent events into EventLog
-        for e in data.get("recent_events", []):
-            te._event_log.append(
-                Event(
-                    tick=e["tick"],
-                    type=e["type"],
-                    source=e["source"],
-                    detail=e["detail"],
-                    ttl=e.get("ttl", 3),
-                    scope=e.get("scope", "global"),
-                    target=e.get("target"),
-                )
-            )
+        """Apply a transient snapshot back onto this engine."""
+        transient_helpers.restore(self, data)

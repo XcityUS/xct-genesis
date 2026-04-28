@@ -21,9 +21,17 @@ _UI_DIR = _PROJECT_ROOT / "frontend" / "dist"
 
 DEFAULT_GATEWAY_TOKEN = "worldseed-gw-token"
 
-# Shared mutable state — token maps shared across all route files
-tokens: dict[str, str] = {}
-agent_tokens: dict[str, str] = {}
+
+def init_token_state(app: FastAPI) -> None:
+    """Initialize per-app token maps. Called once from create_app."""
+    app.state.tokens = {}
+    app.state.agent_tokens = {}
+
+
+def clear_tokens(app: FastAPI) -> None:
+    """Clear both token maps. Called by world/stop and switch routes."""
+    app.state.tokens.clear()
+    app.state.agent_tokens.clear()
 
 
 def build_gateway_payload(engine: WorldEngine, run_id: str) -> dict[str, Any]:
@@ -155,7 +163,24 @@ def _update_openclaw_config(port: int) -> None:
 
 
 def _spawn_gateway(app: FastAPI) -> None:
-    """Spawn openclaw gateway as a subprocess."""
+    """Spawn openclaw gateway as a subprocess.
+
+    Scenes that ship their own Python agent runtime set
+    ``scene.agent_runtime = "custom"`` to opt out. Those scenes expect the
+    user to launch their runtime externally (e.g.
+    ``python -m worldseed.autoresearch.agent``).
+    """
+    engine = getattr(app.state, "engine", None)
+    if engine is not None:
+        runtime = getattr(engine.config.scene, "agent_runtime", None)
+        if runtime == "custom":
+            app.state.gateway_proc = None
+            log.info(
+                "gateway_skipped",
+                scene=engine.config.scene.id,
+                reason="scene.agent_runtime=custom",
+            )
+            return
     _kill_gateway(app)
     # Close previous log handle if stored (prevents file handle leaks on re-spawn)
     old_handle = getattr(app.state, "_gw_log_handle", None)
