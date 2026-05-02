@@ -143,6 +143,30 @@ def handle(
         )
         return
 
+    agent_for_review_check = store.get(agent_id)
+    pending_reviews = (
+        list(agent_for_review_check.data.get("pending_reviews") or [])
+        if agent_for_review_check is not None
+        else []
+    )
+    if pending_reviews:
+        emit(
+            event_log,
+            tick,
+            agent_id,
+            "action_error",
+            (
+                f"run_experiment rejected — you have {len(pending_reviews)} "
+                f"pending review(s): {pending_reviews}. Clear them with "
+                "review_paper before spending GPU."
+            ),
+            scope="admin",
+            target=agent_id,
+            push=True,
+            recorder=ctx.get("recorder"),
+        )
+        return
+
     has_patches = bool(raw_patches)
     has_full = bool(raw_full)
     if has_patches == has_full:
@@ -331,8 +355,9 @@ def handle(
         event_log,
         tick,
         agent_id,
-        "experiment_enqueued",
+        "experiment_queued",
         f"{experiment_id} queued by {agent_id}: {description}",
         scope="global",
         target=agent_id,
+        recorder=ctx.get("recorder"),
     )

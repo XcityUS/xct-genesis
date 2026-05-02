@@ -36,11 +36,36 @@ You can watch from above, intervene, or step into a character. The same engine c
 
 WorldSeed is scene-agnostic. The same engine runs any world you define.
 
-### Scene 1: AI Tool Pilot Lab
+### Scene 1: Autoresearch
+
+You give the system any rough thought or half-formed idea, and a cohort of specialists pursues it. They propose hypotheses, run experiments, peer-review and cite each other's papers, just like a real research community.
+
+In this run, the goal was to lower val_loss on a 5M GPT trained on TinyStories. In 11 hours:
+
+- 100 hypotheses, 86 experiments, 72 peer-reviewed papers
+- val_loss down 24.7%
+
+Every paper is auditable end-to-end: hypothesis, commit, experiment, verified result, citations, reviewer reasoning.
+
+<p align="center">
+<img src="docs/assets/autoresearch-papers-graph.png" alt="72-paper evolution graph: nodes are papers, edges citations; the right panel shows a paper's claim, val_loss, and reasoning" width="720">
+</p>
+
+We observed emergent behaviors such as:
+
+- **Role drift.** The data specialist stopped finding wins in her own lane early. By the back half of the run she was drafting hypotheses in her teammates' territory: attention design, second-order optimization. The other two stayed put. Nothing in the config told her to.
+
+<p align="center">
+
+[![Explore this world (demo)](https://img.shields.io/badge/Explore_this_world_(demo)-→-blue?style=for-the-badge)](https://worldseed.morphmind.ai/demo/en/autoresearch/intro)
+
+</p>
+
+### Scene 2: AI Tool Pilot Lab
 
 One agent studies a new API. Builder agents create competing demos. Critics reject anything generic. Audience agents judge what feels useful. A curator ships the strongest artifact with its trail of attempts, critiques, and revisions.
 
-### Scene 2: AI Layoffs
+### Scene 3: AI Layoffs
 
 https://github.com/user-attachments/assets/d43f5d22-1ba8-4483-b720-145b244ddb8c
 
@@ -61,7 +86,7 @@ Four people in this office, each with their own play running:
 
 [Try it locally](#getting-started)
 
-### Scene 3: Teahouse Espionage
+### Scene 4: Teahouse Espionage
 
 **Same engine. Different YAML. Completely different world.**
 
@@ -110,8 +135,8 @@ Every run is different. Past runs are preserved and replayable.
 
 Choose the runtime guide you need:
 
-- Dashboard and OpenClaw agents: [QUICKSTART.md](QUICKSTART.md)
-- Codex subagents: [Codex Subagents Adapter](docs/codex-subagents/00-core.md), then [Scenario Architecture](docs/codex-subagents/05-scenario-architecture.md)
+- OpenClaw agents: [docs/openclaw/QUICKSTART.md](docs/openclaw/QUICKSTART.md)
+- Codex subagents: [docs/codex/00-core.md](docs/codex/00-core.md), then [Scenario Architecture](docs/codex/05-scenario-architecture.md)
 
 ---
 
@@ -137,7 +162,7 @@ WorldSeed runs on a tick loop over a world you declared in YAML. A **tick** is o
 
 **Plug-in points:**
 
-- **Bring your own agents.** OpenClaw agents can connect over WebSocket. Codex subagents can connect through workspace actions and HTTP endpoints.
+- **Bring your own agents.** [OpenClaw](docs/openclaw/QUICKSTART.md) or [Codex subagents](docs/codex/00-core.md).
 - **Any LLM can be the DM.** Works with any [LiteLLM](https://docs.litellm.ai/docs/providers)-supported model.
 
 For the full runtime plumbing (endpoints, tick scheduling, consequences, inbox delivery), see [Architecture](docs/ARCHITECTURE.md). See a real scene YAML in [`configs/teahouse.yaml`](configs/teahouse.yaml) or the full schema in [Scene Config Spec](configs/SCENE_CONFIG.md).
@@ -222,4 +247,4 @@ Join the discussion or ask for help:
 
 MIT. See [`LICENSE`](./LICENSE).
 
-For anyone building multi-agent worlds. Two example scenes ship with the repo, or [create your own](#create-your-world).
+For anyone building multi-agent worlds. Run the bundled scenes, or [create your own](#create-your-world).

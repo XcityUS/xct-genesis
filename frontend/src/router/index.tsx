@@ -15,6 +15,7 @@ import DemoLayout from '@/components/demo/DemoLayout'
 import DemoIntroPage from '@/components/demo/DemoIntroPage'
 import DemoHeader from '@/components/demo/DemoHeader'
 import PilotPage from '@/components/pilot/PilotPage'
+import PresentPage from '@/components/pilot/PresentPage'
 import { useAgentStore } from '@/stores/agent'
 import { useWorldStore } from '@/stores/world'
 import { useDemoStore } from '@/stores/demo'
@@ -84,6 +85,7 @@ export const router = createBrowserRouter([
       { path: '/lobby', element: <LobbyPage /> },
       { path: '/loading', element: <LoadingPage /> },
       { path: '/pilot', element: <PilotPage /> },
+      { path: '/present/:workspaceId', element: <PresentPage /> },
 
       /* ── Demo route tree (self-contained, no product coupling) ── */
       {

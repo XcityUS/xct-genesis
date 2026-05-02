@@ -259,7 +259,9 @@ class AgentSession:
             "hypothesis_id?, cites?)` — package experiments into a paper. Paper enters "
             "VERIFYING status — engine AUTOMATICALLY re-runs method_commit to confirm "
             "your val_loss claim within ±0.02 tolerance. Verify pass → status=under_review "
-            "(opens for peer review). Verify fail → status=contested (paper closed). "
+            "(opens for peer review). Verify outside tolerance → status=contested "
+            "(paper closed). Exhausted verify infrastructure failures → "
+            "status=verify_failed (paper closed). "
             "Pass hypothesis_id to publish that hypothesis (its claim/rationale gets "
             "embedded in the paper, becoming public for the first time)."
         )

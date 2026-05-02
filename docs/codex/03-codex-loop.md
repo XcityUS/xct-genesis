@@ -102,8 +102,9 @@ revision or rebuttal
 selection
 final package
 story.md
-optional final HTML
+optional present.json (see 04-workspace-and-story.md)
 ```
 
-Do not rely on live HTML to explain the process. The final story should come
-from workspace evidence after the run has enough material.
+Do not rely on a live `/present` view to explain the process. The final
+case study should be curated from workspace evidence after the run has
+enough material.

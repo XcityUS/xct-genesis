@@ -213,6 +213,8 @@ def handle(
             "verified": False,
             "verify_val_loss": None,
             "verify_delta": None,
+            "verify_attempts": 0,
+            "verify_error": None,
             "expected_val_loss": expected_val_loss,
             "reviews": [],
             "created_tick": tick,
@@ -257,6 +259,17 @@ def handle(
             f"failed to render {paper_id}.md — entity persisted, markdown missing",
             scope="admin",
         )
+
+    emit(
+        event_log,
+        tick,
+        agent_id,
+        "paper_drafted",
+        f"{agent_id} drafted paper: {title}",
+        scope="global",
+        push=True,
+        recorder=ctx.get("recorder"),
+    )
 
 
 def _extract_val_loss(claim: str) -> float | None:

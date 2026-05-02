@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
@@ -30,6 +32,13 @@ def register_all_routes(app: FastAPI, ws_manager: ConnectionManager) -> None:
         app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
     if _configs.is_dir():
         app.mount("/configs", StaticFiles(directory=str(_configs)), name="configs")
+
+    # Workspaces — per-run presentation artifacts (present.json + image refs).
+    # PresentPage at /present/:workspaceId fetches /workspaces/:id/present.json
+    # via this mount. Created lazily so first `worldseed run` mkdir works.
+    _workspaces = Path.home() / ".worldseed" / "workspaces"
+    _workspaces.mkdir(parents=True, exist_ok=True)
+    app.mount("/workspaces", StaticFiles(directory=str(_workspaces)), name="workspaces")
 
     # Include all routers
     app.include_router(create_dashboard_router(app, ws_manager))

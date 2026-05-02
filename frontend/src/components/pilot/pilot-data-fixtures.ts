@@ -1,65 +1,8 @@
-export type PilotShape = 'wide' | 'deep' | 'tree' | 'mixed'
-export type PilotStatus = 'chosen' | 'killed' | 'parked'
-export type PilotDeliverableKind = 'paper' | 'pending_result' | 'commit' | 'memo' | 'result_table' | 'artifact' | 'track'
+// PilotDataset demo fixtures — split from pilot-data.ts. Imported only by
+// PilotPage.tsx (the demo switcher); PilotRenderer / PresentPage do not need
+// these fixtures and should import types from pilot-data-types.ts instead.
 
-export interface PilotRelation {
-  target: string
-  kind: 'cites' | 'builds_on' | 'supersedes' | 'verifies' | 'derived_from' | 'materialized_by' | 'text_reference'
-  confidence?: 'field' | 'inferred'
-}
-
-export interface PilotVersion {
-  letter: string
-  status: PilotStatus
-  statusLabel: string
-  contentMeta?: string
-  diff?: { summary: string; changes?: Array<{ type: string; text: string }> }
-}
-
-export interface PilotBranch {
-  letter: string
-  title: string
-  kind?: PilotDeliverableKind
-  status: PilotStatus
-  statusLabel: string
-  createdTick?: number
-  parent?: string | null
-  relations?: PilotRelation[]
-  thesis?: string
-  attempts?: string
-  result?: string
-  evidence?: Array<{ line: string; qt?: boolean }>
-  decision?: string
-  content?: string
-  contentMeta?: string
-  reviews?: Array<{ who: string; verdict: string; verdictText: string; quote: string }>
-  diff?: { summary: string; changes: Array<{ type: string; text: string }> }
-  versions?: PilotVersion[]
-}
-
-export interface PilotDataset {
-  eyebrow: string
-  title: string
-  subtitle: string
-  meta: string
-  verdict: {
-    lead: string
-    bullets?: string[]
-    recommend?: string
-    deliverables?: Array<{ icon: string; name: string; meta: string }>
-    actions?: string[]
-  }
-  question: Record<string, string>
-  panel: Array<{ avatar: string; name: string; bio: string }>
-  rules: string[]
-  branchMap: { shape: PilotShape }
-  branches: PilotBranch[]
-  confidence: {
-    tested: string[]
-    untested: string[]
-    next: string[]
-  }
-}
+import type { PilotDataset } from './pilot-data-types'
 
 export const PILOT_DATA: Record<string, PilotDataset> = {
   autoresearch: {

@@ -56,6 +56,14 @@ EXPERIMENT_BUDGET_SEC = 600
 # val_loss within ±0.02 (absolute) of the paper's claim counts as reproducible.
 # LM training has ~±0.01 seed variance at this scale; 0.02 gives a small margin.
 VERIFY_TOLERANCE = 0.02
+# Infrastructure-level verify failures should not strand a paper in
+# `verifying` forever. Retry transient HTTP/daemon failures a few times before
+# closing the paper as `verify_failed`.
+VERIFY_MAX_ATTEMPTS = 3
+# Infrastructure-level experiment failures should not be recorded as failed
+# science. Retry transient transport/daemon ownership failures, but do not
+# retry code-level crashes such as OOM, syntax_error, exit_1, or timeout.
+EXPERIMENT_INFRA_MAX_ATTEMPTS = 2
 # Default for p4d.24xlarge (8× A100). Override with AUTORESEARCH_GPU_COUNT env
 # for smaller boxes (g5.12xlarge has 4× A10G, g5.xlarge has 1).
 DEFAULT_GPU_COUNT = int(os.environ.get("AUTORESEARCH_GPU_COUNT", "8"))
@@ -94,6 +102,7 @@ class AutoresearchWorker:
         if self._running:
             return
         self._running = True
+        self._requeue_stuck_verifications()
         self._task = asyncio.create_task(self._loop(), name="autoresearch-worker")
         if not self._runner.enabled:
             log.warning(
@@ -168,6 +177,33 @@ class AutoresearchWorker:
 
         result = await self._runner.run_training(req.new_train_py, gpu_id)
         if result.crash_reason is not None or result.val_loss is None:
+            reason = result.crash_reason or "no_val_loss"
+            if self._is_retryable_infra_failure(reason) and req.attempt < EXPERIMENT_INFRA_MAX_ATTEMPTS:
+                next_attempt = req.attempt + 1
+                get_queue().enqueue_sync(
+                    ExperimentRequest(
+                        agent_id=req.agent_id,
+                        experiment_id=req.experiment_id,
+                        new_train_py=req.new_train_py,
+                        description=req.description,
+                        submitted_tick=req.submitted_tick,
+                        hypothesis_id=req.hypothesis_id,
+                        attempt=next_attempt,
+                    )
+                )
+                emit(
+                    self._event_log,
+                    req.submitted_tick,
+                    req.agent_id,
+                    "experiment_retrying",
+                    f"{req.experiment_id} by {req.agent_id} hit infrastructure failure "
+                    f"{reason}; retry {next_attempt}/{EXPERIMENT_INFRA_MAX_ATTEMPTS}",
+                    scope="global",
+                    push=True,
+                    recorder=self._recorder,
+                )
+                return
+
             self._record_experiment(
                 req,
                 commit=commit,
@@ -179,7 +215,7 @@ class AutoresearchWorker:
             )
             self._emit_experiment_crashed(
                 req,
-                reason=result.crash_reason or "no_val_loss",
+                reason=reason,
                 stdout_tail=result.stdout_tail,
             )
             return
@@ -317,11 +353,14 @@ class AutoresearchWorker:
 
     async def _run_verify(self, req: VerifyRequest, gpu_id: int) -> None:
         wt = main_worktree()
+        self._store.update_property(req.paper_id, "verify_attempts", req.attempt)
+        self._store.update_property(req.paper_id, "verify_error", None)
 
         # git show is read-only but cheap — still serialize to be safe.
         async with self._git_lock:
             source = await self._git_show(wt, req.method_commit, TRAIN_FILENAME)
         if source is None:
+            self._mark_verify_failed(req, f"git show {req.method_commit[:7]}:{TRAIN_FILENAME} failed")
             emit(
                 self._event_log,
                 req.submitted_tick,
@@ -336,12 +375,39 @@ class AutoresearchWorker:
 
         result = await self._runner.run_training(source, gpu_id)
         if result.crash_reason is not None or result.val_loss is None:
+            reason = result.crash_reason or "no_val_loss"
+            if self._is_retryable_infra_failure(reason) and req.attempt < VERIFY_MAX_ATTEMPTS:
+                next_attempt = req.attempt + 1
+                self._store.update_property(req.paper_id, "verify_error", reason)
+                get_queue().enqueue_sync(
+                    VerifyRequest(
+                        agent_id=req.agent_id,
+                        paper_id=req.paper_id,
+                        method_commit=req.method_commit,
+                        expected_val_loss=req.expected_val_loss,
+                        submitted_tick=req.submitted_tick,
+                        attempt=next_attempt,
+                    )
+                )
+                emit(
+                    self._event_log,
+                    req.submitted_tick,
+                    req.agent_id,
+                    "verify_retrying",
+                    f"verify of {req.paper_id} hit {reason}; retry {next_attempt}/{VERIFY_MAX_ATTEMPTS}",
+                    scope="global",
+                    push=True,
+                    recorder=self._recorder,
+                )
+                return
+
+            self._mark_verify_failed(req, reason)
             emit(
                 self._event_log,
                 req.submitted_tick,
                 req.agent_id,
                 "verify_failed",
-                f"verify of {req.paper_id} crashed: {result.crash_reason}",
+                f"verify of {req.paper_id} crashed: {reason}",
                 scope="global",
                 push=True,
                 recorder=self._recorder,
@@ -370,6 +436,7 @@ class AutoresearchWorker:
                 self._store.update_property(req.paper_id, "status", "under_review")
                 # Author's hypothesis (if any) transitions publishing → published.
                 self._finalize_hypothesis_status(req.paper_id, status="published")
+                self._enqueue_mandatory_reviews(req.paper_id, author=req.agent_id)
             emit(
                 self._event_log,
                 req.submitted_tick,
@@ -431,6 +498,70 @@ class AutoresearchWorker:
             return
         current = int(corpus.data.get(field, 0) or 0)
         self._store.update_property("corpus", field, current + 1)
+
+    def _enqueue_mandatory_reviews(self, paper_id: str, *, author: str) -> None:
+        """Queue a newly reviewable paper for every non-author agent."""
+        for ent in list(self._store.all_entities()):
+            if ent.type != "agent":
+                continue
+            if ent.id == author:
+                continue
+            if ent.data.get("_system"):
+                continue
+            pending = list(ent.data.get("pending_reviews") or [])
+            if paper_id not in pending:
+                pending.append(paper_id)
+                self._store.update_property(ent.id, "pending_reviews", pending)
+
+    def _is_retryable_infra_failure(self, reason: str) -> bool:
+        return (
+            reason == "http_timeout"
+            or reason.startswith("http_error:")
+            or reason.startswith("daemon_5")
+            or reason == "job_status_timeout"
+            or reason == "job_not_found"
+            or reason == "daemon_restarted"
+        )
+
+    def _mark_verify_failed(self, req: VerifyRequest, reason: str) -> None:
+        paper = self._store.get(req.paper_id)
+        if paper is None:
+            return
+        if paper.data.get("status") == "verifying":
+            self._store.update_property(req.paper_id, "status", "verify_failed")
+            self._finalize_hypothesis_status(req.paper_id, status="refuted")
+        self._store.update_property(req.paper_id, "verified", False)
+        self._store.update_property(req.paper_id, "verify_error", reason)
+
+    def _requeue_stuck_verifications(self) -> None:
+        """Recover verifying papers after worker/server restart.
+
+        The pending queue is in-memory, so a restart can otherwise strand
+        papers in `verifying` with no worker item left to process.
+        """
+        queue = get_queue()
+        for paper in self._store.query_by_type("paper"):
+            if paper.data.get("status") != "verifying":
+                continue
+            method_commit = str(paper.data.get("method_commit") or "")
+            expected_val_loss = paper.data.get("expected_val_loss")
+            if not method_commit or not isinstance(expected_val_loss, (int, float)):
+                continue
+            attempt = int(paper.data.get("verify_attempts", 0) or 0) + 1
+            if attempt > VERIFY_MAX_ATTEMPTS:
+                self._store.update_property(paper.id, "status", "verify_failed")
+                self._store.update_property(paper.id, "verify_error", "verify_attempts_exhausted")
+                continue
+            queue.enqueue_sync(
+                VerifyRequest(
+                    agent_id=str(paper.data.get("author") or ""),
+                    paper_id=paper.id,
+                    method_commit=method_commit,
+                    expected_val_loss=float(expected_val_loss),
+                    submitted_tick=int(paper.data.get("created_tick", 0) or 0),
+                    attempt=attempt,
+                )
+            )
 
     # ------------------------------------------------------------------
     # Git helpers — all local ops on the main worktree.

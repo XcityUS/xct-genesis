@@ -113,6 +113,15 @@ def create_agents_router(app: FastAPI, ws_manager: ConnectionManager) -> APIRout
         eng = _eng(app)
         resolved = _resolve_agent(req.token, req.agent_id, app.state.tokens)
         _require_agent(eng, resolved)
+        # Reject submissions once the scene budget is permanently reached
+        # (max_ticks / timeout / game_over). Pause-then-resume is fine -
+        # `ended` is set only on natural termination, not temp pause.
+        tr = getattr(app.state, "tick_runner", None)
+        if tr is not None and tr.ended:
+            raise HTTPException(
+                410,
+                detail=f"run ended: {tr.ended_reason or 'terminated'}",
+            )
         try:
             result = eng.submit(resolved, req.action, req.params)
         except ValueError as exc:

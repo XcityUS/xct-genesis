@@ -31,53 +31,105 @@ AGENT_MD_TEMPLATE = """# {agent_id}
 
 {personality}
 
+## Expertise
+
+{expertise_block}
+
 ## Drives — your operating constraints
 
 {drives_block}
 
-## How to publish (your stable interface)
+## Scene-specific instructions
+
+{instructions_block}
+
+## Actor loop
+
+You are a WorldSeed actor, not a one-shot report writer. Each activation is one
+turn of play. Follow this loop exactly:
+
+1. Run `perceive` before deciding anything.
+2. Read `action_options` from the perceive output. It is the current source of
+   truth for what you can do and which targets are valid.
+3. Choose one useful legal action that advances your goals and fits your
+   character. Check target state before acting; if an object is already
+   finalized, do not submit actions whose preconditions clearly require an open
+   or unresolved target.
+4. If the action requires file references, write the required workspace-relative
+   files first at the paths described by the scene action schema. Keep private
+   drafts under `agents/{agent_id}/workspace/` or `scratch/`.
+5. Submit that action with `act`, or with `publish` only if you also need to
+   append an optional machine index row.
+6. Update status with what you did and what you intend next.
+7. Return control to MAIN with a short summary, next intent, and blockers.
+
+Do not repeat an action that your `self_state` or recent events show you already
+completed. Prefer unresolved/open targets over finalized ones. Do not invent
+actions outside `action_options`; use `attempt` only when the scene offers no
+more specific action. Do not wait for the next tick inside your activation unless
+MAIN explicitly asks you to.
+
+## Workspace interface
 
 Use the workspace wrapper from the shell:
 
 ```bash
-python3 "$WORLDSEED_WORKSPACE/ws.py" perceive
-python3 "$WORLDSEED_WORKSPACE/ws.py" status --state working --focus "what you are doing"
-python3 "$WORLDSEED_WORKSPACE/ws.py" publish ACTION --lane FILE.jsonl --row '{{...}}' key=value
+uv run python "$WORLDSEED_WORKSPACE/ws.py" perceive
+uv run python "$WORLDSEED_WORKSPACE/ws.py" act ACTION key=value
+uv run python "$WORLDSEED_WORKSPACE/ws.py" status --state working --focus "what you are doing"
+uv run python "$WORLDSEED_WORKSPACE/ws.py" publish ACTION --lane FILE.jsonl --row '{{...}}' key=value
 ```
 
 Env vars `WORLDSEED_WORKSPACE` and `WORLDSEED_AGENT_ID={agent_id}` are set by
 MAIN before you run. You are already activated by MAIN/bootstrap. Do not
 register yourself or pass tokens.
 
-## Your lane
+## Workspace model
 
-`agents/{agent_id}/`:
+Your private area is `agents/{agent_id}/`:
 
-- `*.jsonl` — your append-only artifact history (you choose the filenames)
-- `files/` — your binary outputs (images, html, audio, etc)
-- `scratch/` — private drafts, throw-away scripts; nobody else reads this
+- `workspace/` — private working documents and candidate drafts
+- `scratch/` — private throw-away notes and scripts; nobody else reads this
+- `files/` — private binary outputs (images, html, audio, etc)
+- `*.jsonl` — optional append-only machine index/history, not the main prose
+  artifact
+
+Public shared files live under `shared/` when the scene action schema asks for
+them:
+
+- Use the workspace-relative paths named by the action params and descriptions.
+- Create new shared files instead of overwriting existing ones unless the scene
+  explicitly says otherwise.
+- Other agents should read `shared/` and world state, not your private
+  `workspace/` or `scratch/`.
 
 ## Actions available in this scene
 
 {actions_block}
 
-Cross-artifact references use a `target_artifact_id` field (or whatever the
-action defines). Add references inside the lane row body so final presentation
-can join them visually.
+Cross-artifact references use `handoff_target`, `document_paths`,
+`target_document`, deliverable document params, or whatever the action defines.
+Prefer workspace-relative paths and follow the scene action descriptions.
 
-## When to stop
+## When to return control
 
-When your current unit is done, update status, then return a short summary:
-what you did, artifact ids produced, next intent, blockers.
+After you submit one meaningful world action, update status, then return a
+short summary: what you did, handoff documents produced if any, next intent,
+and blockers. Do not declare your role finished unless the run has ended or
+MAIN explicitly tells you to stop.
 
 ## Hard rules
 
 - Never write secrets (API keys, tokens) into any workspace file.
 - Do not run register. MAIN/bootstrap activates agents before spawning them.
-- Never write outside `agents/{agent_id}/`.
-- Lane jsonl files are append-only. New versions of an artifact = new id with
-  a `revised_from` field referencing the old id.
-- Do not edit other agents' lane files.
+- Write only inside `agents/{agent_id}/` and by creating new workspace-relative
+  files under `shared/` when an action asks for them.
+- Do not read or edit other agents' private `workspace/`, `scratch/`, `files/`,
+  or lane jsonl files.
+- JSONL files are append-only machine logs/indexes. They are not the primary
+  document handed to the next agent.
+- New versions of a handoff document require a new filename with a
+  `revised_from` reference in the world action.
 """
 
 
@@ -85,6 +137,16 @@ def _format_block(items: list[str], bullet: str = "- ", empty: str = "_(none spe
     if not items:
         return empty
     return "\n".join(f"{bullet}{item}" for item in items)
+
+
+def _format_text_or_block(value: Any, *, bullet: str = "- ", empty: str = "_(none specified)_") -> str:
+    if value is None or value == "":
+        return empty
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return _format_block([str(item) for item in value], bullet=bullet, empty=empty)
+    return str(value)
 
 
 def _format_actions(actions: dict[str, Any]) -> str:
@@ -96,6 +158,11 @@ def _format_actions(actions: dict[str, Any]) -> str:
         param_names = ", ".join(p.get("name", "?") for p in params)
         desc = cfg.get("description") or ""
         out.append(f"### `{name}({param_names})`\n{desc}")
+        if cfg.get("blocks_when_available"):
+            out.append(
+                "\nPriority: when `action_options` shows this action with a legal target, "
+                "submit this action before lower-priority alternatives."
+            )
         if params:
             for p in params:
                 req = " *(required)*" if p.get("required") else ""
@@ -150,12 +217,15 @@ def _agent_md(agent_id: str, character: dict[str, Any], actions: dict[str, Any])
     personality = character.get("personality") or "_(no personality declared)_"
     goals = character.get("goals") or []
     drives = character.get("drives") or []
+    instructions = character.get("instructions") or character.get("codex_instructions")
     return AGENT_MD_TEMPLATE.format(
         agent_id=agent_id,
         identity=identity,
         personality=personality,
         goals_block=_format_block(goals, bullet="- "),
         drives_block=_format_block(drives, bullet="- "),
+        expertise_block=_format_text_or_block(character.get("expertise")),
+        instructions_block=_format_text_or_block(instructions),
         actions_block=_format_actions(actions),
     )
 
@@ -235,6 +305,7 @@ def init_workspace(scenario_path: Path, workspace: Path, *, force: bool = False)
         manifest_path.write_text(json.dumps(_default_manifest(scenario, agent_ids), indent=2, ensure_ascii=False))
 
     (workspace / "deliverable").mkdir(exist_ok=True)
+    (workspace / "shared").mkdir(parents=True, exist_ok=True)
 
     story_path = workspace / "story.md"
     if force or not story_path.exists():
@@ -249,6 +320,7 @@ def init_workspace(scenario_path: Path, workspace: Path, *, force: bool = False)
         adir.mkdir(parents=True, exist_ok=True)
         (adir / "files").mkdir(exist_ok=True)
         (adir / "scratch").mkdir(exist_ok=True)
+        (adir / "workspace").mkdir(exist_ok=True)
 
         agent_md = adir / "AGENT.md"
         if force or not agent_md.exists():

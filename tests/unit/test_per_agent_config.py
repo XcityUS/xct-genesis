@@ -90,3 +90,13 @@ class TestPerAgentConfig:
         assert "deal" not in player_options
         assert "deal" in dealer_options
         assert "fold" not in dealer_options
+
+    def test_smoke_filtered_by_available_to(self):
+        from worldseed.scene.checks.smoke import run_smoke
+
+        engine = self._make_engine()
+        smoke = run_smoke(engine.config)
+
+        assert smoke.action_agents["fold"] == ["player1"]
+        assert smoke.action_agents["deal"] == ["dealer"]
+        assert smoke.action_agents["talk"] == ["player1", "dealer"]

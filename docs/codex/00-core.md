@@ -46,6 +46,7 @@ workspace/
   scenario.yaml
   trajectory.md       # Codex operating plan
   story.md            # final user-facing narrative
+  present.json        # optional curated case study (rendered at /present/<id>)
   ws.py               # agent wrapper: perceive, act, publish, status
   agents/{id}/
     AGENT.md
@@ -68,11 +69,12 @@ engine records event/inbox/signal
 watcher returns signal to primary Codex session
 primary session decides who to wake next
 curator/final worker writes final package
-story.md and optional final HTML are generated from the workspace
+story.md and optional present.json are generated from the workspace
 ```
 
-During the run, prioritize clean artifact records over live UI. A final page can
-be generated after enough evidence exists.
+During the run, prioritize clean artifact records over live UI. The final
+present.json (rendered at `/present/<workspace-id>`) can be generated after
+enough evidence exists.
 
 For Codex-subagent runs, avoid low world `max_ticks` limits. Use
 `scene.max_ticks: null` or a value high enough for discovery, parallel

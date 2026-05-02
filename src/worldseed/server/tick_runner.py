@@ -163,6 +163,19 @@ class TickRunner:
         self.busy = BusyTracker(timeout=wake_timeout)
         self._notifying = False
         self._pending_notify = False
+        # Permanent stop signal — distinct from temporary pause. Set when
+        # budget limits (max_ticks / timeout / game_over) trigger natural
+        # loop exit. /act endpoint refuses new submissions once True.
+        self._ended = False
+        self._ended_reason: str | None = None
+
+    @property
+    def ended(self) -> bool:
+        return self._ended
+
+    @property
+    def ended_reason(self) -> str | None:
+        return self._ended_reason
 
     @property
     def connector(self) -> ConnectorProvider | None:
@@ -232,6 +245,8 @@ class TickRunner:
                         "game_over_detected",
                         tick=self._engine.tick,
                     )
+                    self._ended = True
+                    self._ended_reason = f"game_over@tick={self._engine.tick}"
                     break
 
                 # Auto-stop after max_ticks
@@ -241,6 +256,8 @@ class TickRunner:
                         tick=self._engine.tick,
                         max_ticks=self._max_ticks,
                     )
+                    self._ended = True
+                    self._ended_reason = f"max_ticks_reached ({self._engine.tick}/{self._max_ticks})"
                     break
 
                 # Auto-stop after timeout_min
@@ -250,6 +267,8 @@ class TickRunner:
                         tick=self._engine.tick,
                         elapsed_min=round((time.monotonic() - self._start_time) / 60, 2),
                     )
+                    self._ended = True
+                    self._ended_reason = "timeout_reached"
                     break
 
             except asyncio.CancelledError:

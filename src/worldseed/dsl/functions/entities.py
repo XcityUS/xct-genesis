@@ -13,6 +13,7 @@ references the entity's properties and a handful of context vars
 - ``==``, ``!=``
 - ``in [a, b, c]`` / ``in ('x','y')``
 - ``and`` / ``or`` / ``not``
+- ``reviewed_by(agent_id)`` for paper review lists
 
 Nothing exotic — this is intentionally small. If you need more, promote
 the filter into a purpose-built function.
@@ -45,6 +46,15 @@ def _eval_where(expr: str, entity_data: dict[str, Any], ctx: dict[str, Any]) -> 
         # NOT handling
         if atom.startswith("not "):
             return not eval_atom(atom[4:])
+        # Domain helper for paper-like entities with reviews:
+        # "reviewed_by('alice')" / "reviewed_by($agent)".
+        m = re.match(r"reviewed_by\((.+)\)$", atom)
+        if m:
+            reviewer = m.group(1).strip().strip("'\"")
+            reviews = entity_data.get("reviews") or []
+            if not isinstance(reviews, list):
+                return False
+            return any(isinstance(r, dict) and str(r.get("reviewer")) == reviewer for r in reviews)
         # Member-in-list: "status in ['a','b']"
         m = re.match(r"(\w+(?:\.\w+)*)\s+in\s+\[(.+)\]$", atom)
         if m:

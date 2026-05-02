@@ -129,6 +129,44 @@ class TestCount:
         assert result == 0
 
 
+class TestEntitiesOf:
+    def test_entities_of_reviewed_by_filters_current_agent(self) -> None:
+        from worldseed.dsl.functions._registry import get_function_handler
+
+        store = StateStore()
+        store.add(
+            Entity(
+                id="paper_001",
+                type="paper",
+                _data={
+                    "status": "under_review",
+                    "author": "alex",
+                    "reviews": [{"reviewer": "blair", "verdict": "accept"}],
+                },
+            )
+        )
+        store.add(
+            Entity(
+                id="paper_002",
+                type="paper",
+                _data={
+                    "status": "under_review",
+                    "author": "alex",
+                    "reviews": [],
+                },
+            )
+        )
+
+        handler = get_function_handler("entities_of")
+        assert handler is not None
+        result = handler(
+            "type='paper', where=status=='under_review' and author != $agent and not reviewed_by($agent)",
+            store,
+            {"agent_id": "blair"},
+        )
+        assert result == ["paper_002"]
+
+
 class TestMaxByKey:
     """max_by_key(path) — pick winning key from a dict-shaped property."""
 

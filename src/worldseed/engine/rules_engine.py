@@ -9,6 +9,7 @@ import structlog
 
 from worldseed.dsl.effects import execute as execute_effect
 from worldseed.dsl.preconditions import evaluate as evaluate_precondition
+from worldseed.engine.action_policy import blocking_action_names
 from worldseed.engine.event_log import EventLog
 from worldseed.engine.state_store import StateStore
 from worldseed.models.action import ActionSubmission
@@ -84,6 +85,27 @@ class RulesEngine:
             "event_log": self._event_log,
             "recorder": self._recorder,
         }
+
+        blocking = blocking_action_names(
+            self._config,
+            self._store,
+            action.agent_id,
+            tick,
+            exclude={action.action_type},
+        )
+        if blocking:
+            blocker = blocking[0]
+            return (
+                ActionResult(
+                    success=False,
+                    action=action,
+                    reason=(
+                        f"Action '{action.action_type}' is blocked while "
+                        f"'{blocker}' is available; resolve '{blocker}' first"
+                    ),
+                ),
+                None,
+            )
 
         # Check available_to — reject if agent doesn't match visibility filter
         if action_config.available_to is not None:

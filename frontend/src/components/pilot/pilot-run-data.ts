@@ -1,4 +1,4 @@
-import type { PilotBranch, PilotDataset, PilotStatus } from './pilot-data'
+import type { PilotBranch, PilotDataset, PilotStatus } from './pilot-data-types'
 import latestSnapshot from './autoresearch-latest-snapshot.json'
 
 interface RunSummary {

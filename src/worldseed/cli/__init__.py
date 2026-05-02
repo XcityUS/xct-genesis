@@ -78,6 +78,71 @@ def main() -> None:
     # runs
     sub.add_parser("runs", help="List past runs")
 
+    # present-skeleton
+    sk = sub.add_parser(
+        "present-skeleton",
+        help="Build a skeleton present.json for a workspace (mechanical fields auto-filled, narrative TODO).",
+    )
+    sk.add_argument("--workspace", required=True, help="Workspace path (e.g. ~/.worldseed/workspaces/<run-id>)")
+
+    # codex-runner
+    crp = sub.add_parser(
+        "codex-runner",
+        help="Automate Codex actor activations against a running WorldSeed server.",
+    )
+    crp.add_argument("--workspace", required=True, help="WorldSeed run workspace")
+    crp.add_argument("--url", default="http://127.0.0.1:8000", help="WorldSeed server URL")
+    crp.add_argument(
+        "--repo-root",
+        default=os.getcwd(),
+        help="Repo root passed to `codex exec --cd`",
+    )
+    crp.add_argument(
+        "--agents",
+        default=None,
+        help="Comma-separated agent ids. Defaults to manifest.json agents.",
+    )
+    crp.add_argument("--max-cycles", type=int, default=1, help="Number of activation/tick cycles")
+    crp.add_argument(
+        "--tick-mode",
+        choices=("manual", "auto"),
+        default=(
+            os.environ.get("WORLDSEED_CODEX_TICK_MODE", "manual")
+            if os.environ.get("WORLDSEED_CODEX_TICK_MODE", "manual") in {"manual", "auto"}
+            else "manual"
+        ),
+        help="manual pauses/steps the engine; auto follows the server background tick runner",
+    )
+    crp.add_argument("--agent-timeout", type=float, default=180.0, help="Seconds per agent activation")
+    crp.add_argument("--dm-timeout", type=float, default=180.0, help="Seconds per Codex DM activation")
+    crp.add_argument(
+        "--dm-max-attempts",
+        type=int,
+        default=2,
+        help="Codex DM JSON-generation attempts before aborting",
+    )
+    crp.add_argument("--signal-timeout", type=float, default=1.0, help="Director signal poll seconds")
+    crp.add_argument(
+        "--async-wait-timeout",
+        type=float,
+        default=float(os.environ.get("WORLDSEED_CODEX_ASYNC_WAIT_TIMEOUT", "900")),
+        help="Seconds to wait for scene async background work before refreshing perception; 0 disables",
+    )
+    crp.add_argument(
+        "--async-poll-interval",
+        type=float,
+        default=float(os.environ.get("WORLDSEED_CODEX_ASYNC_POLL_INTERVAL", "10")),
+        help="Seconds between scene async status polls",
+    )
+    crp.add_argument("--parallel", action="store_true", help="Run agent activations concurrently")
+    crp.add_argument("--model", default=None, help="Optional Codex model override")
+    crp.add_argument(
+        "--dangerous-bypass",
+        action="store_true",
+        help="Pass --dangerously-bypass-approvals-and-sandbox to codex exec",
+    )
+    crp.add_argument("--dry-run", action="store_true", help="Print codex commands without running them")
+
     # validate
     vp = sub.add_parser("validate", help="Validate a scene config")
     vp.add_argument("config", help="Scene config YAML")
@@ -104,6 +169,14 @@ def main() -> None:
         from worldseed.cli.runs import runs
 
         runs()
+    elif args.command == "present-skeleton":
+        from worldseed.cli._present import run as present_skeleton_run
+
+        present_skeleton_run(args)
+    elif args.command == "codex-runner":
+        from worldseed.cli.codex_runner import codex_runner
+
+        codex_runner(args)
     elif args.command == "validate":
         from worldseed.cli.validate import validate_cmd
 

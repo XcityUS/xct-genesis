@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from worldseed.engine.action_policy import apply_enum_filter, blocking_action_names
+
 if TYPE_CHECKING:
-    from worldseed.engine.state_store import StateStore
     from worldseed.world import WorldEngine
 
 
@@ -23,6 +24,9 @@ def build_action_options(engine: WorldEngine, agent_id: str) -> dict[str, dict[s
 
     visible_ids: list[str] | None = None
     available = engine.actions_available_to(agent_id)
+    blocking = set(blocking_action_names(engine._config, engine.state, agent_id, engine.tick))
+    if blocking:
+        available &= blocking
     options: dict[str, dict[str, Any]] = {}
     ctx = {"agent_id": agent_id, "action_params": {}, "tick": engine.tick}
 
@@ -31,6 +35,7 @@ def build_action_options(engine: WorldEngine, agent_id: str) -> dict[str, dict[s
             continue
 
         params: dict[str, Any] = {}
+        skip_action = False
         for p in action_cfg.params:
             if p.enum_from and p.type == "entity_ref":
                 if p.enum_from == "$visible":
@@ -57,41 +62,13 @@ def build_action_options(engine: WorldEngine, agent_id: str) -> dict[str, dict[s
                         resolved = []
                     if p.enum_filter and resolved:
                         resolved = apply_enum_filter(engine.state, resolved, p.enum_filter)
+                    if p.required and not resolved:
+                        skip_action = True
+                        break
                     params[p.name] = resolved if resolved else p.type
             else:
                 params[p.name] = p.type
+        if skip_action:
+            continue
         options[name] = params
     return options
-
-
-def apply_enum_filter(
-    store: StateStore,
-    entity_ids: list[str],
-    enum_filter: dict[str, Any],
-) -> list[str]:
-    """Keep entity IDs whose entity matches every (key, value) in enum_filter.
-
-    Special keys: `type` checks entity.type, `id` checks entity.id. Everything
-    else is matched against entity properties.
-    """
-    result: list[str] = []
-    for eid in entity_ids:
-        entity = store.get(eid)
-        if entity is None:
-            continue
-        match = True
-        for key, expected in enum_filter.items():
-            if key == "type":
-                if entity.type != expected:
-                    match = False
-                    break
-            elif key == "id":
-                if entity.id != expected:
-                    match = False
-                    break
-            elif entity.get(key) != expected:
-                match = False
-                break
-        if match:
-            result.append(eid)
-    return result

@@ -52,9 +52,12 @@ def resolve(
     recipient = req.actor_agent_id if req.source_type == "action" else None
     narrative_source = "dm" if req.source_type == "action" else req.source_type
 
-    # Carry the actor through the apply ctx so emit_event effects attribute
-    # to the original actor instead of "system" — matches in-process semantics.
-    apply_ctx: dict[str, Any] = {"agent_id": req.actor_agent_id or "", "tick": engine.tick}
+    # Carry the original action context through so external DM effects can use
+    # the same DSL refs as in-process DM, e.g. $agent, $target, or other
+    # action params.
+    apply_ctx: dict[str, Any] = dict(req.ctx or {})
+    apply_ctx["agent_id"] = req.actor_agent_id or apply_ctx.get("agent_id", "")
+    apply_ctx["tick"] = engine.tick
     ok = apply_dm_response(
         response=response,
         store=engine.state,

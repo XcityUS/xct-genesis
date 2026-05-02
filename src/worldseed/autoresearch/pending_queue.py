@@ -30,6 +30,10 @@ class ExperimentRequest:
     # Optional link to one of the agent's private hypotheses. When set, the
     # worker advances that hypothesis to status="testing" on completion.
     hypothesis_id: str | None = None
+    # Infrastructure retry count. Code-level crashes (OOM, syntax, exit_1)
+    # should be surfaced to the agent, but transient daemon/network failures
+    # can safely retry the same source.
+    attempt: int = 1
 
 
 @dataclass
@@ -48,6 +52,7 @@ class VerifyRequest:
     method_commit: str = ""
     expected_val_loss: float = 0.0
     submitted_tick: int = 0
+    attempt: int = 1
 
 
 WorkItem = ExperimentRequest | VerifyRequest

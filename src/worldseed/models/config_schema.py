@@ -276,6 +276,7 @@ class ActionConfig(BaseModel):
     available_to: list[PreconditionConfig] | None = (
         None  # Visibility filter. Same DSL as preconditions. None = all agents.
     )
+    blocks_when_available: bool = False  # If true, other actions are blocked while this action has a legal target.
     highlight: bool = False  # Mark action records as highlights for dashboard
 
 
@@ -376,6 +377,67 @@ class PerceptionConfig(BaseModel):
         return data
 
 
+class CodexCwdConfig(BaseModel):
+    """Optional cwd policy consumed by `worldseed codex-runner`."""
+
+    mode: Literal["git_worktree_per_agent"]
+    root: str | None = None
+    root_env: str | None = None
+    main_subdir: str = ""
+    worktrees_subdir: str = "worktrees"
+    base_ref: str = "HEAD"
+    branch_prefix: str = "codex/"
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CodexAsyncEventGroupConfig(BaseModel):
+    """Event counts used by codex-runner to wait for async scene work."""
+
+    name: str = "work"
+    queued_events: list[str] = Field(default_factory=list)
+    terminal_events: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CodexRowsGtStateEntitiesConfig(BaseModel):
+    """Refresh when an external result table has more rows than state entities."""
+
+    path: str
+    entity_type: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CodexRefreshWhenConfig(BaseModel):
+    rows_gt_state_entities: CodexRowsGtStateEntitiesConfig | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CodexAsyncRefreshConfig(BaseModel):
+    enabled: bool = False
+    pending_event_groups: list[CodexAsyncEventGroupConfig] = Field(default_factory=list)
+    refresh_when: CodexRefreshWhenConfig = Field(default_factory=CodexRefreshWhenConfig)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CodexRunnerConfig(BaseModel):
+    """Optional scene-owned runtime wiring for `worldseed codex-runner`."""
+
+    cwd: CodexCwdConfig | None = None
+    describe: str | list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    env_hint: str = ""
+    edit_scope_hint: str = ""
+    activation_instructions: str = ""
+    async_refresh: CodexAsyncRefreshConfig = Field(default_factory=CodexAsyncRefreshConfig)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class SceneMetaConfig(BaseModel):
     id: str
     description: str
@@ -391,6 +453,9 @@ class SceneMetaConfig(BaseModel):
     # Agent runtime: "openclaw" (default, auto-spawn) or "custom" (user-launched
     # Python runtime; engine skips OpenClaw spawn).
     agent_runtime: Literal["openclaw", "custom"] = "openclaw"
+    # Optional config consumed by `worldseed codex-runner`. The engine ignores
+    # it; the runner uses it for cwd/env/prompt/async-refresh mechanics.
+    codex: CodexRunnerConfig = Field(default_factory=CodexRunnerConfig)
 
 
 class SanityStep(BaseModel):

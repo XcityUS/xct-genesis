@@ -31,17 +31,15 @@ def run_smoke(config: SceneConfig) -> SmokeReport:
     for action_name, action_cfg in config.actions.items():
         capable: list[str] = []
 
-        if not action_cfg.preconditions:
-            # No preconditions = all agents can execute
-            capable = [a.id for a in agents]
-        else:
-            for agent in agents:
-                ctx = _build_smoke_ctx(agent, action_cfg, store)
-                try:
-                    if all(eval_pre(p, store, ctx) for p in action_cfg.preconditions):
-                        capable.append(agent.id)
-                except Exception:
-                    capable.append(agent.id)  # Benefit of the doubt
+        for agent in agents:
+            ctx = _build_smoke_ctx(agent, action_cfg, store)
+            try:
+                if action_cfg.available_to and not all(eval_pre(p, store, ctx) for p in action_cfg.available_to):
+                    continue
+                if all(eval_pre(p, store, ctx) for p in action_cfg.preconditions):
+                    capable.append(agent.id)
+            except Exception:
+                capable.append(agent.id)  # Benefit of the doubt
 
         report.action_agents[action_name] = capable
 
