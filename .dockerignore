@@ -1,0 +1,51 @@
+# Ignore git metadata
+.git
+.gitignore
+
+# Ignore dev/packaging
+node_modules
+__pycache__
+*.pyc
+.venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Ignore test/sample data
+tests
+*.egg-info
+dist
+build
+
+# Ignore environment (secrets via Railway dashboard)
+.env
+.env.*
+
+# Ignore docs & meta (not needed at runtime)
+docs
+.github
+*.md
+!README.md
+
+# Ignore editor/tooling
+.idea
+.vscode
+*.swp
+
+# Ignore frontend source (already built in Dockerfile)
+frontend/src
+frontend/public
+frontend/node_modules
+frontend/package.json
+frontend/package-lock.json
+frontend/tsconfig.json
+frontend/vite.config.ts
+frontend/index.html
+
+# Ignore non-runtime project files
+uv.lock
+pyproject.toml
+
+# Ignore skills, openclaw plugin (runtime not needed)
+skills
+openclaw-plugin
