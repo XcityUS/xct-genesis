@@ -29,6 +29,7 @@ RUN uv sync --extra dm --frozen --no-dev --no-install-project
 # ── Layer 2: Project source (lightweight layer, changes often)
 COPY src/ ./src/
 COPY configs/ ./configs/
+COPY shared/ ./shared/
 RUN uv sync --extra dm --frozen --no-dev
 
 # ── Layer 3: Built frontend (from Stage 1)
