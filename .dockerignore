@@ -32,19 +32,9 @@ docs
 .vscode
 *.swp
 
-# Ignore frontend source (already built in Dockerfile)
-frontend/src
-frontend/public
+# Ignore frontend build artifacts (rebuilt inside Dockerfile)
 frontend/node_modules
-frontend/package.json
-frontend/package-lock.json
-frontend/tsconfig.json
-frontend/vite.config.ts
-frontend/index.html
-
-# Ignore non-runtime project files
-uv.lock
-pyproject.toml
+frontend/dist
 
 # Ignore skills, openclaw plugin (runtime not needed)
 skills
