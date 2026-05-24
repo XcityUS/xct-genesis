@@ -36,6 +36,6 @@ docs
 frontend/node_modules
 frontend/dist
 
-# Ignore skills, openclaw plugin (runtime not needed)
+# Ignore skills, openclaw plugin source not needed at runtime (commented: plugin IS needed)
 skills
-openclaw-plugin
+# openclaw-plugin  ← included in Docker image for openclaw plugins install

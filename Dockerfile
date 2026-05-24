@@ -17,10 +17,20 @@ WORKDIR /app
 # Install uv (fast Python package manager)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
-# System deps
+# System deps: curl (healthcheck), Node.js 22 + npm (OpenClaw gateway)
+# NodeSource provides Node.js 22 (openclaw requires >=22.19.0; use Latest LTS)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# Install OpenClaw CLI (agent runtime)
+RUN npm install -g openclaw@latest
+
+# Copy WorldSeed plugin for OpenClaw (installed at runtime by entrypoint)
+COPY openclaw-plugin/ /app/openclaw-plugin/
+RUN cd /app/openclaw-plugin && npm install
 
 # ── Layer 1: Dependencies (cached when pyproject / lock unchanged)
 COPY pyproject.toml uv.lock ./

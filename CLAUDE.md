@@ -238,3 +238,5 @@ To enable: install OpenClaw (`npm i -g openclaw`) or use the `agent_runtime: cus
 - Railway injects `PORT` env var (default 8000)
 - Entrypoint: `scripts/docker-entrypoint.sh`
 - Frontend built at `/app/frontend/dist`, served by FastAPI static files
+- OpenClaw gateway installed in Stage 2 via NodeSource Node.js 22 + npm
+- Required env vars for gateway: `OPENCLAW_MODEL`, `OPENCLAW_API_KEY` (optional, falls back to ANTHROPIC_API_KEY / OPENAI_API_KEY)
