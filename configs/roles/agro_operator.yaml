@@ -1,0 +1,122 @@
+# XCITY Genesis Role — Agro Operator
+# 参与种植、养殖、温室、特色经济作物和碳汇农业的用户角色。
+# 参考：XCITY Genesis 产品设计 §5.1.4, §6.1.2 光合农业区, §8 经济模型
+
+role:
+  id: agro_operator
+  name:
+    en: Agro Operator
+    zh: 农业经营者
+  tier: base
+  prerequisite: citizen
+  description: >
+    在 XCITY 光合农业区参与种植、养殖、温室、葡萄园、橄榄园、
+    开心果园、草药种植和碳汇农业的城市角色。Agro Operator 既可以
+    从 1㎡ 种植权益起步的个人公民，也可以是经营大型农场的 GP。
+    农业产出可铸造 KWH，也可以对应现实农产品 NFT 兑换。
+
+# ── 业务范围 ───────────────────────────────────────────────
+domain:
+  scales:
+    - id: micro_1sqm
+      label: "1㎡ 种植 / 养殖权益"
+      typical_actor: citizen
+      typical_outputs: [carbon_credit, share_in_yield, nft_voucher]
+
+    - id: family_farm
+      label: "家庭农场"
+      area_range_sqm: [100, 4000]
+      typical_actor: small_holder
+
+    - id: project_farm
+      label: "项目农场"
+      area_range_acres: [1, 100]
+      typical_actor: project_sponsor
+
+    - id: estate_farm
+      label: "大型庄园 / 农业基地"
+      area_range_acres: [100, null]
+      typical_actor: gp_or_ipo_partner
+
+  segments:                        # 农业类型覆盖
+    - planting                     # 种植
+    - livestock                    # 养殖
+    - greenhouse                   # 温室
+    - vineyard                     # 葡萄园
+    - olive_grove                  # 橄榄园
+    - pistachio                    # 开心果
+    - medicinal_herbs              # 草药
+    - carbon_farming               # 碳汇农业
+
+  produce_types:
+    - fresh_produce                # 鲜活农产品
+    - processed_goods              # 加工品（葡萄酒、橄榄油等）
+    - carbon_credit                # 碳信用
+    - genetic_assets               # 种质 / 育种权
+
+# ── 资产 ───────────────────────────────────────────────────
+asset:
+  representation: nft              # 农产品 NFT / 农场权益 NFT / 碳汇 NFT
+  produces:
+    - agricultural_yield
+    - carbon_credit
+  redemption:                      # 链上凭证可兑换的现实物品
+    - physical_produce_shipment
+    - winery_visit
+    - farm_share_membership
+  yield_distribution: harvest_based
+
+# ── 协作对象 ───────────────────────────────────────────────
+collaborators:
+  ai_agents:
+    - ai_farm_manager              # AI 农场主：种植排期、轮作、灌溉
+    - irrigation_agent             # 灌溉调度
+    - pest_disease_agent           # 病虫害识别
+    - market_pricing_agent         # 农产品定价与销售
+    - carbon_accounting_agent      # 碳核算
+  robots:
+    - spray_drone                  # 无人机喷洒
+    - harvest_robot                # 采摘机器人
+    - livestock_monitor_drone      # 牲畜监测无人机
+    - greenhouse_climate_robot     # 温室环境调控
+
+# ── 权限 ───────────────────────────────────────────────────
+permissions:
+  may_act:
+    - register_agro_project
+    - cultivate_land
+    - raise_livestock
+    - operate_greenhouse
+    - sell_produce
+    - mint_carbon_credit
+    - tokenize_produce_as_nft
+    - delegate_to_ai_farm_manager
+    - schedule_robot_task
+  may_hold:
+    - agro_project_equity_nft
+    - produce_nft
+    - carbon_credit_nft
+    - livestock_share_nft
+    - vineyard_estate_nft
+
+# ── 升级路径 ───────────────────────────────────────────────
+progression:
+  unlocks:
+    - role: industrial_builder
+      condition: build_processing_facility   # 农产品加工产业链
+    - role: trader
+      condition: produce_market_listings >= 5
+    - role: project_sponsor
+      condition: register_agro_project_count >= 1
+    - role: gp
+      condition: managed_acres >= 100
+    - role: ipo_partner
+      condition: managed_acres >= 1000
+
+# ── 经济模型（参考定价） ───────────────────────────────────
+economics:
+  pricing_reference:
+    - tier: basic_agro_agent_subscription
+      price_kwh_per_month: 50
+      price_usdc_equiv: 5
+      notes: "基础农业 Agent 月费"

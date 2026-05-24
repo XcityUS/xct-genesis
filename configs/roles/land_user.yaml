@@ -1,0 +1,119 @@
+# XCITY Genesis Role — Land User
+# 持有、租赁或交易不同颗粒度土地使用权 NFT 的用户角色。
+# 参考：XCITY Genesis 产品设计 §5.1.2, §7 土地颗粒度设计
+
+role:
+  id: land_user
+  name:
+    en: Land User
+    zh: 土地使用者
+  tier: base
+  prerequisite: citizen
+  description: >
+    购买、租赁或交易不同颗粒度土地使用权的用户。
+    XCITY 把城市土地使用权颗粒度最小化到 1 ㎡ Cell，
+    让普通人也能从 1 平米起步，逐步累积到 Acre 级、IPO 级地块。
+
+# ── 土地颗粒度阶梯 ───────────────────────────────────────────
+holdings:
+  granularity:
+    - id: cell_1sqm
+      label: "1㎡ Cell"
+      area_sqm: 1
+      tier: micro
+      typical_use:
+        - 种植
+        - 养殖权益
+        - 微型光伏
+        - 碳汇
+        - 小型任务
+        - 社区建设积分
+
+    - id: plot_100sqm
+      label: "100㎡ Plot"
+      area_sqm: 100
+      tier: small
+
+    - id: plot_1000sqm
+      label: "1000㎡ Plot"
+      area_sqm: 1000
+      tier: medium
+
+    - id: acre_1
+      label: "1 Acre"
+      area_sqm: 4047
+      tier: standard
+      typical_use:
+        - 光伏阵列
+        - 农场地块
+        - 中型项目
+
+    - id: acre_10
+      label: "10 Acre"
+      area_sqm: 40470
+      tier: large
+
+    - id: acre_100
+      label: "100 Acre"
+      area_sqm: 404686
+      tier: estate
+
+    - id: acre_1000_plus
+      label: "1000 Acre+"
+      area_sqm_min: 4046860
+      tier: ipo_eligible
+      unlocks:
+        - role: ipo_partner       # 1000 Acre+ 进入 IPO Factory 资格
+
+asset:
+  representation: nft             # 土地使用权 NFT / 链上凭证
+  unit: kwh                       # 计价单位
+  zoning:                         # 所属功能分区（白皮书九大分区）
+    - residential
+    - photovoltaic_agriculture
+    - compute_zone
+    - finance_office
+    - trade_processing
+    - nature_reserve
+    - mining
+    - industrial
+    - free_port
+
+permissions:
+  may_act:
+    - purchase_land_use_nft
+    - lease_land_use_nft
+    - sublease_land_use_nft
+    - sell_land_use_nft
+    - bundle_lands              # 合并多块为更大颗粒度
+    - split_lands               # 拆分大颗粒度为小块
+    - assign_to_project         # 将土地投入项目
+    - delegate_use              # 委托给 GP 或 Agent 经营
+
+  may_hold:
+    - land_use_nft
+    - land_rental_contract
+    - land_yield_token          # 土地产出权 token
+
+# ── 角色升级路径 ─────────────────────────────────────────────
+progression:
+  unlocks:
+    - role: solar_builder
+      condition: land_in_zone(photovoltaic_agriculture)
+    - role: agro_operator
+      condition: land_in_zone(photovoltaic_agriculture)
+    - role: mining_operator
+      condition: land_in_zone(mining)
+    - role: ipo_partner
+      condition: total_area_acres >= 1000
+    - role: project_sponsor
+      condition: assign_to_project_count >= 1
+
+economics:
+  pricing_reference:               # 仅作参考定价，实际由市场决定
+    - tier: cell_1sqm_solar
+      price_kwh: 100
+      price_usdc_equiv: 10
+    - tier: acre_1_solar
+      price_kwh: 50000
+      price_usdc_equiv: 5000

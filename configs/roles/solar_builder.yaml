@@ -1,0 +1,109 @@
+# XCITY Genesis Role — Solar Builder
+# 参与光伏建设、储能、电力调度和光伏产业链的用户角色。
+# 参考：XCITY Genesis 产品设计 §5.1.3, §6.1.2 光合农业区, §8 经济模型
+
+role:
+  id: solar_builder
+  name:
+    en: Solar Builder
+    zh: 光伏建设者
+  tier: base
+  prerequisite: citizen
+  description: >
+    参与 1㎡ 光伏、社区光伏、电站、储能、电力调度和光伏产业链建设的
+    城市角色。Solar Builder 既可以是从 1㎡ 微型光伏起步的个人公民，
+    也可以是组织大型光伏项目的 GP 或战略产业方。光伏发电直接产出
+    KWH——城市单一货币，因此本角色是 KWH 的核心铸造方之一。
+
+# ── 业务范围 ───────────────────────────────────────────────
+domain:
+  scales:
+    - id: micro_1sqm
+      label: "1㎡ 微型光伏"
+      capacity_w_est: 200          # 估算装机功率（瓦）
+      typical_actor: citizen
+
+    - id: community
+      label: "社区光伏"
+      area_range_sqm: [100, 10000]
+      typical_actor: community_dao
+
+    - id: utility_plant
+      label: "光伏电站"
+      area_range_acres: [1, 1000]
+      typical_actor: project_sponsor
+
+    - id: utility_scale
+      label: "大型电站 / 储能基地"
+      area_range_acres: [1000, null]
+      typical_actor: gp_or_ipo_partner
+
+  segments:                        # 光伏产业链覆盖环节
+    - generation                   # 发电
+    - storage                      # 储能 (BESS)
+    - dispatch                     # 电力调度
+    - inverter_and_balance         # 逆变器、平衡组件
+    - panel_assembly               # 光伏组件组装
+    - epc_and_om                   # 工程总包与运维
+    - grid_interconnect            # 并网与售电
+    - p2p_energy_market            # 点对点能源交易
+
+# ── 资产与铸造 ─────────────────────────────────────────────
+asset:
+  representation: nft              # 光伏项目权益 NFT / 设备 NFT
+  produces: kwh                    # 发电铸造城市货币
+  yield_model: pay_per_kwh         # 按发电量分配 KWH 收益
+  decommission_obligations:
+    - panel_recycling
+    - land_restoration
+
+# ── 协作对象 ───────────────────────────────────────────────
+collaborators:
+  ai_agents:
+    - solar_design_agent           # 选址、装机量估算
+    - dispatch_agent               # 调度优化、储能策略
+    - om_agent                     # 故障检测、清洁排程
+  robots:
+    - solar_panel_layer_robot      # 光伏铺板机器人
+    - drone_inspector              # 无人机巡检
+    - cleaning_robot               # 清洁机器人
+
+# ── 权限 ───────────────────────────────────────────────────
+permissions:
+  may_act:
+    - install_solar_panel
+    - register_solar_project
+    - join_solar_project           # 作为 LP / 共建者加入
+    - dispatch_power
+    - sell_kwh_to_grid
+    - trade_solar_rec              # 可再生能源证书 (REC)
+    - delegate_om_to_agent
+  may_hold:
+    - solar_project_equity_nft
+    - panel_inventory_nft
+    - bess_storage_capacity_nft
+    - rec_certificate
+
+# ── 升级路径 ───────────────────────────────────────────────
+progression:
+  unlocks:
+    - role: industrial_builder
+      condition: build_panel_assembly_line
+    - role: project_sponsor
+      condition: register_solar_project_count >= 1
+    - role: gp
+      condition: managed_capacity_mw >= 10
+    - role: ipo_partner
+      condition: managed_capacity_mw >= 100
+
+# ── 经济模型（参考定价） ───────────────────────────────────
+economics:
+  pricing_reference:
+    - tier: cell_1sqm_solar_land
+      price_kwh: 100
+      price_usdc_equiv: 10
+      notes: "1㎡ 光伏地"
+    - tier: acre_1_solar_project
+      price_kwh: 50000
+      price_usdc_equiv: 5000
+      notes: "1 Acre 光伏项目地"

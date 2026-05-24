@@ -1,0 +1,387 @@
+scene:
+  id: xcity
+  description: "XCITY Genesis 创世启动日。阿根廷圣胡安省的荒地之上，一座以 KWH 为单一货币、以 AI Agent 和机器人为执行系统的未来城市正在诞生。首批四位数字公民——一位刚领到护照的新市民、一位从 1㎡ 起步的土地使用者、一位光伏建设者和一位葡萄园主——在城市市政厅集合。他们必须在第一天里完成第一笔土地交易、第一次光伏铺装、第一次种植，把游戏中的城市变成现实中的城市。"
+  dm_knowledge: "KWH 是城市单一货币：1㎡ 光伏地 = 100 KWH ≈ 10 USDC。1 Acre 光伏项目 = 50,000 KWH。基础农业 Agent 月费 50 KWH。光伏发电直接铸造 KWH，是城市最重要的产出。土地使用权以 NFT 表示。光合农业区昼夜晴朗，光伏出力强；矿业区位于山地。"
+  tick_narrative_time: "约一小时"
+  tick_interval: 5
+  max_ticks: 60
+
+entities:
+  # ── 九大功能分区 (XCITY 产品设计 §6.1) ──────────────────────
+  - id: 市政厅
+    type: space
+    description: "DAO 市政厅大厅。墙上挂着 XCITY 创世地图：从这里向外辐射出九大分区。中央有一块全息沙盘和一台 KWH 钱包注册终端。"
+    connects_to: [居住生活区, 光合农业区, 算力特区, 贸易加工区, 自由港区]
+    zone: finance_office
+
+  - id: 居住生活区
+    type: space
+    description: "XCITY 第一批数字公民的住宅社区。15 分钟生活圈，邻居都是新市民。"
+    connects_to: [市政厅, 光合农业区]
+    zone: residential
+
+  - id: 光合农业区
+    type: space
+    description: "白天阳光强烈，光伏板和葡萄藤共生。1㎡ Cell 网格延伸到地平线，温室点缀其间。"
+    connects_to: [市政厅, 居住生活区, 自然保护区, 工业区]
+    zone: photovoltaic_agriculture
+    irradiance: high
+
+  - id: 算力特区
+    type: space
+    description: "液冷 GPU Pod 阵列嗡嗡作响。AI Agent 在这里被训练、雇佣、调度。"
+    connects_to: [市政厅, 工业区]
+    zone: compute_zone
+
+  - id: 贸易加工区
+    type: space
+    description: "光伏组件组装线、农产品冷链仓库、跨境电商打包区聚集。"
+    connects_to: [市政厅, 工业区, 自由港区]
+    zone: trade_processing
+
+  - id: 自然保护区
+    type: space
+    description: "被保护的山地与河谷。碳汇任务和生态巡护从这里发出。"
+    connects_to: [光合农业区, 矿业区]
+    zone: nature_reserve
+
+  - id: 矿业区
+    type: space
+    description: "通往金、铜、银矿的山地入口。AI 找矿和钻探从这里开始。"
+    connects_to: [自然保护区, 工业区]
+    zone: mining
+
+  - id: 工业区
+    type: space
+    description: "铜冶炼厂、Pod 组装厂、机器人运维中心。"
+    connects_to: [光合农业区, 算力特区, 贸易加工区, 矿业区]
+    zone: industrial
+
+  - id: 自由港区
+    type: space
+    description: "内陆港、保税仓库、跨境结算窗口。"
+    connects_to: [市政厅, 贸易加工区]
+    zone: free_port
+
+  # ── 关键资产 / 道具 ────────────────────────────────────────
+  - id: 创世地块_1sqm
+    type: land_nft
+    description: "1㎡ Cell 土地使用权 NFT。光合农业区西北角。"
+    location: 光合农业区
+    holder: null
+    area_sqm: 1
+    zone: photovoltaic_agriculture
+    price_kwh: 100
+
+  - id: 葡萄园_1acre
+    type: land_nft
+    description: "1 Acre 葡萄园地块使用权 NFT。已种橄榄和马尔贝克葡萄藤。"
+    location: 光合农业区
+    holder: 林月
+    area_sqm: 4047
+    zone: photovoltaic_agriculture
+
+  - id: 光伏组件
+    type: item
+    description: "一块 200W 单晶硅光伏板。准备铺设到 1㎡ Cell 上。"
+    location: 市政厅
+    holder: 周阳
+
+  - id: KWH钱包终端
+    type: prop
+    description: "市政厅的钱包注册终端。把数字身份和 KWH 钱包绑定。"
+    location: 市政厅
+
+  - id: 创世护照
+    type: item
+    description: "XCITY 城市护照——数字公民的链上凭证。"
+    location: 市政厅
+    holder: 陈一
+
+  - id: 全息沙盘
+    type: prop
+    description: "市政厅中央的城市沙盘。可以缩放到 1㎡ 级别，标记可购买的土地。"
+    location: 市政厅
+
+  - id: 葡萄藤
+    type: prop
+    description: "三年生马尔贝克葡萄藤，行距规整。需要定期灌溉。"
+    location: 光合农业区
+
+  - id: 光伏铺板机器人
+    type: robot
+    description: "履带式光伏铺板机器人。每小时可铺 200㎡。等待任务调度。"
+    location: 工业区
+    operator: null
+
+  - id: AI农场主
+    type: agent_service
+    description: "可雇佣的 AI 农场主：种植排期、轮作、灌溉、病虫害识别。"
+    location: 算力特区
+    price_kwh_per_month: 50
+
+agents:
+  - id: 陈一
+    location: 市政厅
+    character:
+      identity: "陈一，27岁。XCITY 第一批数字公民。刚从首尔搬来，对加密和能源都有兴趣。"
+      personality: "好奇、谨慎、爱问问题。不愿意第一个掏钱，但也不想错过机会。"
+      goals: ["完成钱包注册和创世护照领取", "理解 XCITY 的角色系统，决定从哪里入手"]
+      drives:
+        - "先去全息沙盘看一圈，再问其他三个人在干什么"
+        - "如果有人能教你怎么买第一块 1㎡ 土地，跟上"
+        - "暂时不要做大额交易——观察"
+      relationships:
+        李航: "土地使用者。他似乎已经在城市里有动作了，可以请教。"
+        周阳: "光伏建设者。他手里那块板看起来很贵。"
+        林月: "葡萄园主。听说她已经有 1 Acre。"
+      role: citizen
+      secret: "他其实带了 5000 USDC 的种子资金，但想先弄清楚再花钱。"
+
+  - id: 李航
+    location: 光合农业区
+    character:
+      identity: "李航，34岁。土地使用者。已经持有 3 块 1㎡ Cell 和 1 块 100㎡ Plot。"
+      personality: "务实、热衷于'颗粒度套利'：买小块、合并、卖大块。"
+      goals: ["把光合农业区西北角的几块 1㎡ Cell 整合成一块 100㎡ Plot", "找到光伏建设者合作铺板"]
+      drives:
+        - "查看创世地块_1sqm 是否还可购买"
+        - "如果陈一来问，鼓励他买入第一块"
+        - "和周阳谈合作：你出地、他出板、利润按 KWH 出力分成"
+      relationships:
+        陈一: "新公民。如果引导他入场，可以做朋友也可能做合伙人。"
+        周阳: "光伏建设者。是潜在的项目合伙人。"
+        林月: "葡萄园主。她那 1 Acre 可能加装光伏共生。"
+      role: land_user
+      secret: "他在策划把所有买到的 1㎡ Cell 合并到 100 Acre 后申请 IPO Factory。"
+
+  - id: 周阳
+    location: 市政厅
+    character:
+      identity: "周阳，30岁。光伏建设者。背着一块 200W 光伏组件来注册。"
+      personality: "技术派、不爱寒暄，更关心装机功率和发电量。"
+      goals: ["铺设第一块 1㎡ 光伏，铸造首批 KWH", "和土地使用者达成 EPC 合作"]
+      drives:
+        - "把光伏组件铺到一块可用的 land_nft 上——任何 1㎡ Cell 都行"
+        - "调度光伏铺板机器人前往工地"
+        - "和李航谈分成"
+      relationships:
+        李航: "有地、要找施工方。"
+        陈一: "新公民。或许是未来的 LP。"
+        林月: "葡萄园主。葡萄藤下可以装农光互补——但她可能不愿意。"
+      role: solar_builder
+      secret: "他过去在一家光伏 EPC 上市公司做过项目经理。这次想自己干 GP。"
+
+  - id: 林月
+    location: 光合农业区
+    character:
+      identity: "林月，39岁。葡萄园主。1 Acre 葡萄园已经第三年。"
+      personality: "温和、固执、对'光伏盖在葡萄藤上'有抵触。"
+      goals: ["首次采收马尔贝克葡萄并铸造产品 NFT", "评估是否雇佣 AI 农场主"]
+      drives:
+        - "去自己的葡萄园_1acre 查看葡萄藤状态"
+        - "考虑用 50 KWH 雇佣 AI 农场主，但要问清楚再付费"
+        - "对周阳提出的'葡萄藤下装光伏'持保留态度，要看是否影响葡萄"
+      relationships:
+        陈一: "新人。可以介绍葡萄园合伙制。"
+        李航: "土地使用者。说不定能买她的几行葡萄。"
+        周阳: "光伏建设者。她不喜欢他急切的样子。"
+      role: agro_operator
+      secret: "她其实有意把 1 Acre 升级成 10 Acre，但需要先证明收成稳定。"
+
+actions:
+  move:
+    description: "移动到相连的分区"
+    params:
+      - { name: to, type: entity_ref, required: true, enum_from: "relationships_of($agent.location, type=connects_to)", description: "目标分区" }
+    preconditions:
+      - { operator: check, left: "$to", op: "in", right: "relationships_of($agent.location, type=connects_to)" }
+    effects:
+      - { operator: set, target: "$agent.location", value: "$to" }
+    events:
+      - { type: "move", detail: "$agent 移动到 $to", ttl: 1, scope: "same_location" }
+
+  say:
+    description: "公开发言。同一分区内所有人都能听到。"
+    params:
+      - { name: message, type: free_text, required: true }
+    preconditions: []
+    effects: []
+    events:
+      - { type: "say", detail: "$agent: $message", ttl: 2, scope: "same_location" }
+
+  whisper:
+    description: "悄声交流。只有对方能听到。"
+    params:
+      - { name: to, type: entity_ref, required: true, enum_from: "$visible", enum_filter: { type: "agent" } }
+      - { name: message, type: free_text, required: true }
+    preconditions:
+      - { operator: check, left: "$to.location", op: "==", right: "$agent.location" }
+    effects: []
+    events:
+      - { type: "whisper", detail: "$agent 对 $to 悄声说: $message", ttl: 1, scope: "target_only" }
+
+  observe:
+    description: "观察某人、某物或某分区。DM 会描述细节。"
+    params:
+      - { name: target, type: entity_ref, required: true, enum_from: "$visible" }
+    preconditions: []
+    effects: []
+    events:
+      - { type: "observe", detail: "$agent 仔细观察 $target", ttl: 1, scope: "same_location" }
+    dm:
+      hint: "描述目标的外观、状态和细节。若是 land_nft，提示其所在分区、面积和价格。若是 agent，提示其姿态和角色徽章。"
+      scope: same_location
+
+  purchase_land:
+    description: "用 KWH 购买一块土地使用权 NFT。完成后获得 land_user 角色。"
+    params:
+      - { name: land, type: entity_ref, required: true, enum_from: "$visible", enum_filter: { type: "land_nft" }, description: "目标地块" }
+    preconditions:
+      - { operator: check, left: "$land.holder", op: "==", right: null }
+      - { operator: check, left: "$land.location", op: "==", right: "$agent.location" }
+    effects:
+      - { operator: set, target: "$land.holder", value: "$agent" }
+    events:
+      - { type: "purchase_land", detail: "$agent 购买了 $land (使用权 NFT)", ttl: 3, scope: "global", push: true, highlight: true }
+    dm:
+      hint: "结算 KWH。把买家角色升级为 land_user（如尚未拥有）。在城市公告板发布。"
+      scope: global
+
+  install_solar:
+    description: "在一块自己持有的 land_nft 上铺设光伏组件。完成后开始铸造 KWH。"
+    params:
+      - { name: land, type: entity_ref, required: true, enum_from: "$visible", enum_filter: { type: "land_nft" } }
+    preconditions:
+      - { operator: check, left: "$land.holder", op: "==", right: "$agent.id" }
+      - { operator: check, left: "$agent.role", op: "==", right: "solar_builder" }
+    effects:
+      - { operator: set, target: "$land.solar_installed", value: true }
+    events:
+      - { type: "install_solar", detail: "$agent 在 $land 上铺设了光伏组件", ttl: 3, scope: "global", push: true, highlight: true }
+    dm:
+      hint: "描述铺板过程。若分区为 photovoltaic_agriculture 且 irradiance=high，立即开始铸造 KWH。"
+      scope: same_location
+
+  plant_crop:
+    description: "在自己的农业地块上种植或养殖。"
+    params:
+      - { name: land, type: entity_ref, required: true, enum_from: "$visible", enum_filter: { type: "land_nft" } }
+      - { name: crop, type: free_text, required: true, description: "作物或牲畜种类" }
+    preconditions:
+      - { operator: check, left: "$land.holder", op: "==", right: "$agent.id" }
+    effects:
+      - { operator: set, target: "$land.crop", value: "$crop" }
+    events:
+      - { type: "plant_crop", detail: "$agent 在 $land 种植了 $crop", ttl: 3, scope: "same_location", highlight: true }
+    dm:
+      hint: "评估作物与分区气候适配性。光合农业区适合葡萄、橄榄、开心果、草药。"
+      scope: same_location
+
+  hire_agent:
+    description: "雇佣一个 AI Agent 服务。按月扣 KWH。"
+    params:
+      - { name: service, type: entity_ref, required: true, enum_from: "$visible", enum_filter: { type: "agent_service" } }
+    preconditions: []
+    effects:
+      - { operator: set, target: "$service.operator", value: "$agent" }
+    events:
+      - { type: "hire_agent", detail: "$agent 雇佣了 $service", ttl: 2, scope: "global", push: true }
+    dm:
+      hint: "结算 KWH 月费。把买家角色追加 agent_manager。"
+      scope: global
+
+  dispatch_robot:
+    description: "调度一个机器人到指定分区或地块执行任务。"
+    params:
+      - { name: robot, type: entity_ref, required: true, enum_from: "$visible", enum_filter: { type: "robot" } }
+      - { name: to, type: entity_ref, required: true, enum_from: "$visible", description: "目标分区或地块" }
+    preconditions: []
+    effects:
+      - { operator: set, target: "$robot.location", value: "$to" }
+      - { operator: set, target: "$robot.operator", value: "$agent" }
+    events:
+      - { type: "dispatch_robot", detail: "$agent 调度 $robot 前往 $to", ttl: 2, scope: "global" }
+
+  trade_kwh:
+    description: "向另一位公民转账 KWH。"
+    params:
+      - { name: to, type: entity_ref, required: true, enum_from: "$visible", enum_filter: { type: "agent" } }
+      - { name: amount, type: number, required: true, description: "KWH 数量" }
+      - { name: memo, type: free_text, required: false }
+    preconditions: []
+    effects: []
+    events:
+      - { type: "trade_kwh", detail: "$agent 向 $to 转账 $amount KWH ($memo)", ttl: 2, scope: "global", push: true }
+    dm:
+      hint: "在 KWH 账本上记录这笔交易。检查发起者余额。"
+      scope: global
+
+  propose_governance:
+    description: "向 DAO 提交一项治理提案（命名、规则、预算分配等）。"
+    params:
+      - { name: title, type: free_text, required: true }
+      - { name: body, type: free_text, required: true }
+    preconditions:
+      - { operator: check, left: "$agent.location", op: "==", right: "市政厅" }
+    effects: []
+    events:
+      - { type: "propose_governance", detail: "$agent 提交治理提案: $title — $body", ttl: 5, scope: "global", push: true, highlight: true }
+    dm:
+      hint: "记入提案列表，等待投票。"
+      scope: global
+
+  attempt:
+    description: "尝试任何创造性行动——DM 判断结果。用于上述行动未覆盖的情况。"
+    params:
+      - { name: description, type: free_text, required: true }
+      - { name: target, type: entity_ref, required: false, enum_from: "$visible", description: "目标（可选）" }
+    preconditions: []
+    effects: []
+    events:
+      - { type: "attempt", detail: "$agent 尝试: $description", ttl: 1, scope: "same_location" }
+    dm:
+      hint: "根据所在分区、可见实体和角色权限判断结果。XCITY 内任何与土地、光伏、农业、KWH、Agent、机器人、治理相关的行动都应认真评估。"
+      scope: same_location
+
+consequences:
+  first_land_sale:
+    trigger:
+      - { operator: check, left: "创世地块_1sqm.holder", op: "!=", right: null }
+    effects:
+      - { operator: emit_event, type: "milestone", detail: "🏛️ XCITY 第一块 1㎡ 土地使用权 NFT 已成交！", scope: global, push: true, ttl: 5 }
+    frequency: on_change
+
+  first_kwh_mint:
+    trigger:
+      - { operator: check, left: "创世地块_1sqm.solar_installed", op: "==", right: true }
+    effects:
+      - { operator: emit_event, type: "milestone", detail: "⚡ 创世光伏开始发电——首批 KWH 被铸造。", scope: global, push: true, ttl: 5 }
+    frequency: on_change
+
+highlights:
+  first_resident_passport:
+    trigger:
+      - { operator: check, left: "创世护照.holder", op: "==", right: "陈一" }
+    label: "首张创世护照已激活"
+    frequency: on_change
+
+  ipo_eligible_assembly:
+    trigger:
+      - { operator: check, left: "$李航.bundled_acres", op: ">=", right: 1000 }
+    label: "土地使用权累计已达 IPO Factory 入场线"
+    frequency: on_change
+
+auto_tick: []
+
+perception:
+  visibility:
+    - operator: any
+      conditions:
+        - { operator: check, left: "$observer.location", op: "==", right: "$entity.location" }
+        - { operator: check, left: "$observer.location", op: "==", right: "$entity.id" }
+  event_scopes:
+    same_location:
+      rules:
+        - { operator: check, left: "$observer.location", op: "==", right: "$event_source.location" }
+  hidden_properties: ["secret", "goals"]

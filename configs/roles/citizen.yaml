@@ -1,0 +1,73 @@
+# XCITY Genesis Role — Citizen
+# 所有用户的基础身份。每位 XCITY 用户在注册时自动获得本角色。
+# 参考：configs/roles/README.md, XCITY Genesis 产品设计 §5.1
+
+role:
+  id: citizen
+  name:
+    en: Citizen
+    zh: 城市公民
+  tier: base                    # base | advanced
+  prerequisite: none            # 注册即获得
+  description: >
+    所有用户的基础身份。每位用户在加入 XCITY 时自动成为城市公民，
+    拥有完整的数字身份、KWH 钱包、城市护照、个人主页、城市声望
+    和治理入口。城市公民是后续所有角色（土地使用者、光伏建设者、
+    农业经营者、GP/LP 等）的前置身份。
+
+identity:
+  digital_id: true              # 唯一数字身份，链上可验证
+  city_passport: true           # 城市护照（NFT 凭证）
+  homepage: true                # 个人主页（公开档案、声望、资产）
+  wallet:
+    currency: KWH               # 城市单一货币
+    custody: self_or_managed    # 自托管钱包，也可托管
+    operations:
+      - receive
+      - send
+      - stake
+      - settle
+
+reputation:
+  enabled: true
+  dimensions:
+    - construction              # 建设贡献
+    - governance                # 治理参与
+    - trading                   # 交易活跃
+    - collaboration             # 协作与社群
+  decay: time_weighted          # 时间衰减，鼓励持续参与
+
+governance:
+  voting_rights: true
+  proposal_rights: true
+  scope:
+    - dao_proposals
+    - public_facility_naming
+    - city_budget_signal
+    - rule_amendments
+
+permissions:
+  may_hold:
+    - kwh
+    - land_use_nft              # 通过获得"土地使用者"角色解锁
+    - project_equity            # 通过 LP / IPO Partner 解锁
+  may_act:
+    - browse_city
+    - chat
+    - join_community
+    - participate_governance
+    - purchase_land             # 触发升级为 Land User
+    - hire_agent                # 触发升级为 Agent Manager
+
+progression:
+  unlocks:
+    - role: land_user
+      condition: own_any_land_use_nft
+    - role: solar_builder
+      condition: invest_in_solar_project
+    - role: agro_operator
+      condition: invest_in_agro_project
+    - role: agent_manager
+      condition: hire_or_create_agent
+    - role: governor
+      condition: cast_first_governance_vote
