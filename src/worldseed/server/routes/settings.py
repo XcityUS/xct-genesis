@@ -13,6 +13,7 @@ from worldseed.server.websocket import ConnectionManager
 log = structlog.get_logger()
 
 DEFAULT_DM_MODEL = ""
+TOKENHUB_DEFAULT_BASE = "https://tokenhub.xcity.one/v1"
 
 
 def _get_default_dm_model() -> str:
@@ -20,80 +21,106 @@ def _get_default_dm_model() -> str:
     return os.environ.get("WORLDSEED_DM_MODEL", DEFAULT_DM_MODEL)
 
 
+def xcity_credentials() -> tuple[str, str] | None:
+    """Return (api_key, base_url) when the xcity tokenhub provider is configured.
+
+    Independent of ``OPENAI_API_KEY`` so stock OpenAI can be configured alongside.
+    """
+    key = os.environ.get("XCT_TOKENHUB_API_KEY", "").strip()
+    if not key:
+        return None
+    base = os.environ.get("XCT_TOKENHUB_API_BASE", "").strip() or TOKENHUB_DEFAULT_BASE
+    return key, base
+
+
 def _custom_openai_base() -> str:
     """Return a custom OpenAI-compatible base URL if one is configured.
 
-    Honours either OPENAI_BASE_URL or OPENAI_API_BASE (e.g. xct-litellm at
-    https://tokenhub.xcity.one/v1). Empty string when pointing at stock OpenAI.
+    Honours either OPENAI_BASE_URL or OPENAI_API_BASE. Empty string when pointing
+    at stock OpenAI. Kept as a generic escape hatch — prefer ``XCT_TOKENHUB_*``
+    when targeting xcity tokenhub.
     """
     return (os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or "").strip()
 
 
-def _list_openai_compatible_models(base: str) -> dict[str, Any]:
-    """List models served by an OpenAI-compatible gateway (xct-litellm / proxy).
+def _list_gateway_models(base: str, api_key: str, prefix: str) -> list[dict[str, Any]]:
+    """List models served by an OpenAI-compatible gateway, tagged with ``prefix/<id>``.
 
     These gateways often host models LiteLLM's static catalog doesn't know about
-    and under-report capabilities (e.g. function_calling=false even when tool /
-    JSON calls work), so the usual get_valid_models + supports_function_calling
-    path returns nothing. We list everything the gateway's /models endpoint
-    serves and route each through LiteLLM's openai-compatible handler as
-    ``openai/<id>`` (picks up OPENAI_API_BASE automatically at call time).
+    and under-report capabilities (e.g. ``function_calling=false`` even when tool
+    or JSON-mode calls work), so the usual ``get_valid_models`` +
+    ``supports_function_calling`` path returns nothing. We list everything the
+    gateway's ``/models`` endpoint serves and let routing decide the handler.
     """
     import httpx
 
-    key = os.environ.get("OPENAI_API_KEY", "")
     resp = httpx.get(
         base.rstrip("/") + "/models",
-        headers={"Authorization": f"Bearer {key}"},
+        headers={"Authorization": f"Bearer {api_key}"},
         timeout=10.0,
     )
     resp.raise_for_status()
     data = resp.json().get("data", [])
-    models = [{"id": f"openai/{m['id']}"} for m in data if isinstance(m, dict) and m.get("id")]
-    return {"providers": [{"provider": "openai", "models": models}], "default": _get_default_dm_model()}
+    return [{"id": f"{prefix}/{m['id']}"} for m in data if isinstance(m, dict) and m.get("id")]
 
 
 def _get_available_models() -> dict[str, Any]:
     """Query for DM models available with the user's API keys.
 
-    With a custom OpenAI-compatible base URL configured, lists that gateway's
-    catalog directly. Otherwise queries LiteLLM for provider models, filtered to
-    chat models that support function calling (required by Instructor/DM).
+    Sources, in order:
+      1. xcity tokenhub (``XCT_TOKENHUB_API_KEY``) — listed as ``xcity/<id>``.
+      2. Generic OpenAI-compatible gateway (``OPENAI_API_BASE``) — escape hatch,
+         listed as ``openai/<id>``. When set, stock LiteLLM discovery is skipped
+         because the gateway replaces OpenAI itself.
+      3. Otherwise LiteLLM's stock per-provider discovery, filtered to chat
+         models that support function calling.
     """
     try:
         import litellm  # noqa: F401  (import also triggers ./.env loading)
     except ImportError:
         return {"providers": [], "default": _get_default_dm_model()}
 
-    # Custom gateway (xct-litellm etc.): list its catalog directly — LiteLLM's
-    # static discovery would query stock OpenAI and find nothing here.
+    providers: list[dict[str, Any]] = []
+
+    # xcity tokenhub — first-class provider, independent of OPENAI_* env.
+    xcity = xcity_credentials()
+    if xcity:
+        key, base = xcity
+        try:
+            xcity_models = _list_gateway_models(base, key, "xcity")
+            if xcity_models:
+                providers.append({"provider": "xcity", "models": xcity_models})
+        except Exception:
+            log.warning("xcity_model_list_failed", base=base, exc_info=True)
+
+    # Generic OpenAI-compatible gateway escape hatch.
     base = _custom_openai_base()
     if base:
         try:
-            return _list_openai_compatible_models(base)
+            openai_models = _list_gateway_models(base, os.environ.get("OPENAI_API_KEY", ""), "openai")
+            if openai_models:
+                providers.append({"provider": "openai", "models": openai_models})
         except Exception:
             log.warning("openai_compatible_model_list_failed", base=base, exc_info=True)
-            return {"providers": [], "default": _get_default_dm_model()}
+        return {"providers": providers, "default": _get_default_dm_model()}
 
-    # Query actual provider APIs for their current model catalogs.
-    # This returns only models each provider currently serves —
-    # no deprecated models, no need for hardcoded filters or dedup.
+    # Stock LiteLLM provider discovery.
     try:
         valid = litellm.get_valid_models(check_provider_endpoint=True)
     except Exception:
         log.warning("litellm_get_valid_models_failed", exc_info=True)
-        return {"providers": [], "default": _get_default_dm_model()}
+        return {"providers": providers, "default": _get_default_dm_model()}
 
-    providers: dict[str, list[dict[str, Any]]] = {}
+    by_provider: dict[str, list[dict[str, Any]]] = {}
     for model_id in sorted(valid):
         if not litellm.supports_function_calling(model=model_id):
             continue
         provider = model_id.split("/")[0] if "/" in model_id else "openai"
-        providers.setdefault(provider, []).append({"id": model_id})
+        by_provider.setdefault(provider, []).append({"id": model_id})
 
-    result = [{"provider": p, "models": models} for p, models in providers.items()]
+    providers.extend({"provider": p, "models": ms} for p, ms in by_provider.items())
 
-    return {"providers": result, "default": _get_default_dm_model()}
+    return {"providers": providers, "default": _get_default_dm_model()}
 
 
 def create_settings_router(app: FastAPI, ws_manager: ConnectionManager) -> APIRouter:

@@ -36,6 +36,27 @@ def _instructor_mode() -> Any:
     return instructor.Mode.JSON if name == "json" else instructor.Mode.TOOLS
 
 
+def _resolve_litellm_call(model: str) -> tuple[str, dict[str, Any]]:
+    """Map a worldseed model id to (litellm_model_id, extra_kwargs).
+
+    ``xcity/<id>`` is rewritten to ``openai/<id>`` and routed with explicit
+    ``api_key`` / ``api_base`` from ``XCT_TOKENHUB_*`` env vars, so the user's
+    ``OPENAI_API_KEY`` stays reserved for stock OpenAI. Other model ids are
+    returned unchanged, letting LiteLLM resolve credentials from its own env.
+    """
+    if model.startswith("xcity/"):
+        from worldseed.server.routes.settings import TOKENHUB_DEFAULT_BASE
+
+        return (
+            "openai/" + model[len("xcity/") :],
+            {
+                "api_key": os.environ.get("XCT_TOKENHUB_API_KEY", ""),
+                "api_base": os.environ.get("XCT_TOKENHUB_API_BASE", "").strip() or TOKENHUB_DEFAULT_BASE,
+            },
+        )
+    return model, {}
+
+
 class DMJudgment(BaseModel):
     """Structured DM output — validated by Instructor automatically.
 
@@ -107,13 +128,15 @@ class LiteLLMDMProvider:
         last_error: Exception | None = None
 
         for model in models:
+            api_model, extra = _resolve_litellm_call(model)
             try:
                 judgment = await client.chat.completions.create(
-                    model=model,
+                    model=api_model,
                     response_model=DMJudgment,
                     messages=messages,
                     max_retries=self._max_retries,
                     timeout=self._timeout,
+                    **extra,
                 )
                 if model != self._model:
                     log.info("dm_fallback_used", fallback=model)
