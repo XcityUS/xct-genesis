@@ -7,6 +7,7 @@ sent back to LLM on validation failure).
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -18,6 +19,21 @@ from worldseed.models.config_schema import EffectConfig
 from worldseed.protocol.dm import DMContext, DMResponse
 
 log = structlog.get_logger()
+
+
+def _instructor_mode() -> Any:
+    """Resolve the Instructor structured-output mode from the environment.
+
+    TOOLS (default) forces ``tool_choice`` — the most reliable mode on providers
+    that fully support function calling. Some OpenAI-compatible gateways (e.g.
+    xct-litellm) front thinking-mode models that reject a forced ``tool_choice``;
+    set ``WORLDSEED_DM_INSTRUCTOR_MODE=json`` to use prompt-based JSON instead,
+    which works across every model those gateways serve.
+    """
+    import instructor
+
+    name = os.environ.get("WORLDSEED_DM_INSTRUCTOR_MODE", "tools").strip().lower()
+    return instructor.Mode.JSON if name == "json" else instructor.Mode.TOOLS
 
 
 class DMJudgment(BaseModel):
@@ -68,7 +84,7 @@ class LiteLLMDMProvider:
 
             self._client = instructor.from_litellm(
                 litellm.acompletion,
-                mode=instructor.Mode.TOOLS,
+                mode=_instructor_mode(),
             )
         return self._client
 

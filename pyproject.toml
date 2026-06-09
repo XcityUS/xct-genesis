@@ -13,6 +13,7 @@ dependencies = [
     "deepdiff>=7.0,<9",
     "lunar-python>=1.4.8",
     "anthropic>=0.86.0",
+    "python-dotenv>=1.0,<2",
 ]
 
 [project.optional-dependencies]

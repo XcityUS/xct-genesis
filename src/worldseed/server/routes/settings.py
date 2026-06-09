@@ -20,16 +20,60 @@ def _get_default_dm_model() -> str:
     return os.environ.get("WORLDSEED_DM_MODEL", DEFAULT_DM_MODEL)
 
 
-def _get_available_models() -> dict[str, Any]:
-    """Query LiteLLM for models available with the user's API keys.
+def _custom_openai_base() -> str:
+    """Return a custom OpenAI-compatible base URL if one is configured.
 
-    Returns models grouped by provider, filtered to chat models
-    that support function calling (required by Instructor/DM).
+    Honours either OPENAI_BASE_URL or OPENAI_API_BASE (e.g. xct-litellm at
+    https://tokenhub.xcity.one/v1). Empty string when pointing at stock OpenAI.
+    """
+    return (os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or "").strip()
+
+
+def _list_openai_compatible_models(base: str) -> dict[str, Any]:
+    """List models served by an OpenAI-compatible gateway (xct-litellm / proxy).
+
+    These gateways often host models LiteLLM's static catalog doesn't know about
+    and under-report capabilities (e.g. function_calling=false even when tool /
+    JSON calls work), so the usual get_valid_models + supports_function_calling
+    path returns nothing. We list everything the gateway's /models endpoint
+    serves and route each through LiteLLM's openai-compatible handler as
+    ``openai/<id>`` (picks up OPENAI_API_BASE automatically at call time).
+    """
+    import httpx
+
+    key = os.environ.get("OPENAI_API_KEY", "")
+    resp = httpx.get(
+        base.rstrip("/") + "/models",
+        headers={"Authorization": f"Bearer {key}"},
+        timeout=10.0,
+    )
+    resp.raise_for_status()
+    data = resp.json().get("data", [])
+    models = [{"id": f"openai/{m['id']}"} for m in data if isinstance(m, dict) and m.get("id")]
+    return {"providers": [{"provider": "openai", "models": models}], "default": _get_default_dm_model()}
+
+
+def _get_available_models() -> dict[str, Any]:
+    """Query for DM models available with the user's API keys.
+
+    With a custom OpenAI-compatible base URL configured, lists that gateway's
+    catalog directly. Otherwise queries LiteLLM for provider models, filtered to
+    chat models that support function calling (required by Instructor/DM).
     """
     try:
-        import litellm
+        import litellm  # noqa: F401  (import also triggers ./.env loading)
     except ImportError:
         return {"providers": [], "default": _get_default_dm_model()}
+
+    # Custom gateway (xct-litellm etc.): list its catalog directly — LiteLLM's
+    # static discovery would query stock OpenAI and find nothing here.
+    base = _custom_openai_base()
+    if base:
+        try:
+            return _list_openai_compatible_models(base)
+        except Exception:
+            log.warning("openai_compatible_model_list_failed", base=base, exc_info=True)
+            return {"providers": [], "default": _get_default_dm_model()}
 
     # Query actual provider APIs for their current model catalogs.
     # This returns only models each provider currently serves —

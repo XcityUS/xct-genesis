@@ -8,6 +8,9 @@ import os
 
 def main() -> None:
     """CLI entry point."""
+    from worldseed._env import load_env
+
+    load_env()  # before argparse reads WORLDSEED_DM_MODEL etc. from os.environ
     parser = argparse.ArgumentParser(
         description="WorldSeed — a persistent world for AI agents",
     )

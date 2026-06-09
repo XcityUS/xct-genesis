@@ -62,6 +62,10 @@ def create_app(
     app startup. Used by `play` command where tick starts only after all
     agents self-register via WebSocket.
     """
+    from worldseed._env import load_env
+
+    load_env()  # ensure OPENAI_API_BASE / WORLDSEED_* are loaded for direct ASGI launch
+
     if run_id and not run_id.strip():
         run_id = ""
 
