@@ -19,7 +19,12 @@ log = structlog.get_logger()
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
 _UI_DIR = _PROJECT_ROOT / "frontend" / "dist"
 
-DEFAULT_GATEWAY_TOKEN = "worldseed-gw-token"
+DEFAULT_GATEWAY_TOKEN = os.environ.get("WORLDSEED_GATEWAY_TOKEN", "worldseed-gw-token")
+
+# When set to "remote", skip spawning a local openclaw subprocess.
+# An external gateway (e.g. multi-tenant Fastclaw) is expected to dial in
+# at /ws with the matching WORLDSEED_GATEWAY_TOKEN.
+GATEWAY_MODE = os.environ.get("WORLDSEED_GATEWAY_MODE", "local").lower()
 
 
 def init_token_state(app: FastAPI) -> None:
@@ -181,6 +186,13 @@ def _spawn_gateway(app: FastAPI) -> None:
                 reason="scene.agent_runtime=custom",
             )
             return
+    if GATEWAY_MODE == "remote":
+        app.state.gateway_proc = None
+        log.info(
+            "gateway_remote_mode",
+            msg="Skipping local subprocess; awaiting external gateway to dial /ws",
+        )
+        return
     _kill_gateway(app)
     # Close previous log handle if stored (prevents file handle leaks on re-spawn)
     old_handle = getattr(app.state, "_gw_log_handle", None)
