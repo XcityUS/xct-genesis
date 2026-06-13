@@ -564,17 +564,26 @@ export function createWorldSeedGateway(): ChannelGatewayAdapter<WorldSeedAccount
                   .catch((err: any) => ctx.log?.error?.(`Initial wake error for ${agentId}: ${err.message}`));
               }
             } else if (msg.type === "sleep") {
-              // World paused — tell all agents to stop acting
+              // World paused — tell all agents to stop acting.
+              // `channelRuntime.session.sendMessage` was renamed/removed in
+              // openclaw runtimes newer than the one the plugin was authored
+              // against. If the API is unavailable we no-op the pause notice;
+              // the next wake event will resume agents either way.
               const agents = knownAgents.get(account.accountId) ?? [];
               ctx.log?.info?.(`Sleep received — pausing ${agents.length} agents`);
-              for (const agentId of agents) {
-                const sessionKey = `agent:${slugifyAgentId(agentId)}:worldseed:${runState.runId}`;
-                const storePath = channelRuntime.session.resolveStorePath();
-                await channelRuntime.session.sendMessage(
-                  storePath,
-                  sessionKey,
-                  "[WORLDSEED SYSTEM] — world paused. Stop all actions. Do not call worldseed_perceive or worldseed_act until you receive the next wake. Wait silently.",
-                );
+              const sendMessageFn = (channelRuntime.session as any)?.sendMessage;
+              if (typeof sendMessageFn === "function") {
+                for (const agentId of agents) {
+                  const sessionKey = `agent:${slugifyAgentId(agentId)}:worldseed:${runState.runId}`;
+                  const storePath = channelRuntime.session.resolveStorePath();
+                  await sendMessageFn(
+                    storePath,
+                    sessionKey,
+                    "[WORLDSEED SYSTEM] — world paused. Stop all actions. Do not call worldseed_perceive or worldseed_act until you receive the next wake. Wait silently.",
+                  );
+                }
+              } else {
+                ctx.log?.warn?.("channelRuntime.session.sendMessage unavailable in this openclaw runtime; skipping pause notice");
               }
             } else if (msg.type === "wake") {
               // Fire-and-forget: don't block the websocket handler waiting for
