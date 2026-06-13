@@ -27,6 +27,12 @@ MODEL="${OPENCLAW_MODEL:?OPENCLAW_MODEL required}"
 API_KEY="${OPENCLAW_API_KEY:-${OPENAI_API_KEY:-${ANTHROPIC_API_KEY:-}}}"
 HC_PORT="${HEALTHCHECK_PORT:-${PORT:-8080}}"
 
+# Custom OpenAI-compatible provider config (xct-genesis uses the
+# xcity tokenhub which speaks the OpenAI Chat Completions protocol).
+PROVIDER_KEY="${OPENCLAW_PROVIDER_KEY:-xcity}"
+PROVIDER_BASE_URL="${OPENCLAW_BASE_URL:-https://tokenhub.xcity.one}"
+MODEL_ID="${MODEL#${PROVIDER_KEY}/}"   # strip leading "xcity/" if present
+
 SERVER_URL="${PROTO}://${HOST}:${WS_PORT}/ws"
 
 OPENCLAW_CFG="${HOME}/.openclaw/openclaw.json"
@@ -55,6 +61,24 @@ cat > "$OPENCLAW_CFG" <<EOF
   },
   "gateway": {
     "mode": "local"
+  },
+  "models": {
+    "providers": {
+      "${PROVIDER_KEY}": {
+        "baseUrl": "${PROVIDER_BASE_URL}",
+        "apiKey": "${API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "${MODEL_ID}",
+            "name": "${MODEL_ID}",
+            "input": ["text"],
+            "contextWindow": 128000,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
   },
   "plugins": {
     "load": {
