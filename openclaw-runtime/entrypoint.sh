@@ -57,6 +57,9 @@ cat > "$OPENCLAW_CFG" <<EOF
     "mode": "local"
   },
   "plugins": {
+    "load": {
+      "paths": ["/app/openclaw-plugin"]
+    },
     "entries": {
       "worldseed": {
         "enabled": true,
@@ -94,11 +97,8 @@ echo "[openclaw-runtime] Config written: ${OPENCLAW_CFG}"
 echo "[openclaw-runtime]   target: ${SERVER_URL}"
 echo "[openclaw-runtime]   account: ${ACCOUNT_ID}, model: ${MODEL}"
 
-# Plugin is npm-linked in the image (see Dockerfile). Re-link in case
-# the container restart cleared the global node_modules link.
-echo "[openclaw-runtime] Linking worldseed plugin..."
-(cd /app/openclaw-plugin && npm link 2>/dev/null) || true
-npm link @openclaw/worldseed 2>/dev/null || true
+# Plugin is loaded via plugins.load.paths set in openclaw.json above,
+# so no extra install step is needed at boot.
 
 # Railway expects every service to listen on $PORT for healthcheck.
 # openclaw gateway has no HTTP listener of its own — bind a permanent
