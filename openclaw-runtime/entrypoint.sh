@@ -32,6 +32,20 @@ SERVER_URL="${PROTO}://${HOST}:${WS_PORT}/ws"
 OPENCLAW_CFG="${HOME}/.openclaw/openclaw.json"
 mkdir -p "$(dirname "$OPENCLAW_CFG")"
 
+# openclaw expects accounts.default (or an explicit bindings entry) for
+# channel routing; we also write the named account so logs are clear.
+ACCT_BLOCK=$(cat <<ACCT
+        "default": {
+          "serverUrl": "${SERVER_URL}",
+          "gatewayToken": "${GATEWAY_TOKEN}"
+        },
+        "${ACCOUNT_ID}": {
+          "serverUrl": "${SERVER_URL}",
+          "gatewayToken": "${GATEWAY_TOKEN}"
+        }
+ACCT
+)
+
 cat > "$OPENCLAW_CFG" <<EOF
 {
   "agents": {
@@ -57,10 +71,7 @@ cat > "$OPENCLAW_CFG" <<EOF
     "worldseed": {
       "enabled": true,
       "accounts": {
-        "${ACCOUNT_ID}": {
-          "serverUrl": "${SERVER_URL}",
-          "gatewayToken": "${GATEWAY_TOKEN}"
-        }
+${ACCT_BLOCK}
       }
     }
   }
@@ -83,9 +94,11 @@ echo "[openclaw-runtime] Config written: ${OPENCLAW_CFG}"
 echo "[openclaw-runtime]   target: ${SERVER_URL}"
 echo "[openclaw-runtime]   account: ${ACCOUNT_ID}, model: ${MODEL}"
 
-echo "[openclaw-runtime] Installing worldseed plugin..."
-cd /app/openclaw-plugin
-openclaw plugins install -l . || echo "[openclaw-runtime] plugin install warned (may already be installed)"
+# Plugin is npm-linked in the image (see Dockerfile). Re-link in case
+# the container restart cleared the global node_modules link.
+echo "[openclaw-runtime] Linking worldseed plugin..."
+(cd /app/openclaw-plugin && npm link 2>/dev/null) || true
+npm link @openclaw/worldseed 2>/dev/null || true
 
 # Railway expects every service to listen on $PORT for healthcheck.
 # openclaw gateway has no HTTP listener of its own — bind a permanent

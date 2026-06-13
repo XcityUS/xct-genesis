@@ -20,10 +20,14 @@ RUN apt-get update \
 # break the plugin at load.
 RUN npm install -g openclaw@2026.3.13
 
-# WorldSeed channel plugin source. Installed at runtime by the
-# entrypoint so the plugin shows up in openclaw's plugin registry.
+# WorldSeed channel plugin source. Install runtime deps, then `npm
+# link` so the package (@openclaw/worldseed) is resolvable globally —
+# openclaw's plugin loader requires this rather than the local-link
+# `openclaw plugins install -l .` flow.
 COPY openclaw-plugin /app/openclaw-plugin
-RUN cd /app/openclaw-plugin && npm install --omit=dev --no-audit --no-fund
+RUN cd /app/openclaw-plugin \
+    && npm install --omit=dev --no-audit --no-fund \
+    && npm link
 
 # Shared data referenced by the worldseed plugin (gateway.ts reads
 # ../../shared/languages.json relative to its install location). The
