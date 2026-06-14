@@ -1,5 +1,5 @@
 {
-  "brand": "WORLDSEED",
+  "brand": "GENESIS",
   "subtitle": "영속 월드 엔진",
   "connecting": "연결 중...",
   "lobby": {
@@ -24,7 +24,7 @@
     "clickToEnter": "대시보드로 이동",
     "pastRuns": "이전 실행",
     "noPastRuns": "이전 실행이 없습니다.",
-    "serverUnreachable": "백엔드가 실행되지 않았습니다. worldseed play로 시작하세요.",
+    "serverUnreachable": "백엔드가 실행되지 않았습니다. 서버를 먼저 시작하세요.",
     "live": "라이브",
     "ticks": "Tick",
     "dm": "DM"
@@ -191,7 +191,7 @@
     "finalEdition": "최종판",
     "dramatis": "등장인물",
     "eventTicker": "이벤트 속보",
-    "publication": "WorldSeed 발행",
+    "publication": "Genesis 발행",
     "moreCount": "+{{count}}개",
     "editorial": "사설",
     "generateTooltip": "이 실행의 신문 요약 생성",

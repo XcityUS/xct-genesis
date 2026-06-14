@@ -1,5 +1,5 @@
 {
-  "brand": "WORLDSEED",
+  "brand": "GENESIS",
   "subtitle": "持久世界引擎",
   "connecting": "连接中...",
   "lobby": {
@@ -24,7 +24,7 @@
     "clickToEnter": "点击进入仪表盘",
     "pastRuns": "历史运行",
     "noPastRuns": "暂无历史运行。",
-    "serverUnreachable": "后端未启动。请运行 worldseed play。",
+    "serverUnreachable": "后端未启动，请先启动服务。",
     "live": "运行中",
     "ticks": "ticks",
     "dm": "DM"
@@ -194,7 +194,7 @@
     "finalEdition": "终刊",
     "dramatis": "人物志",
     "eventTicker": "事件速报",
-    "publication": "WorldSeed 出版",
+    "publication": "Genesis 出版",
     "moreCount": "还有 {{count}} 条",
     "editorial": "社论",
     "generateTooltip": "生成本次运行的新闻摘要",

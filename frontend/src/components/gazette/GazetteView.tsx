@@ -122,7 +122,7 @@ export default function GazetteView() {
         <hr className="bs-masthead-rule bot-inner" />
         <hr className="bs-masthead-rule bot-outer" />
         <div className="bs-dateline">
-          <span>WorldSeed</span>
+          <span>Genesis</span>
           <span>{date}</span>
         </div>
       </header>

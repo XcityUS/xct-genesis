@@ -1,5 +1,5 @@
 {
-  "brand": "WORLDSEED",
+  "brand": "GENESIS",
   "subtitle": "永続ワールドエンジン",
   "connecting": "接続中...",
   "lobby": {
@@ -24,7 +24,7 @@
     "clickToEnter": "ダッシュボードに入る",
     "pastRuns": "過去の実行",
     "noPastRuns": "過去の実行はまだありません。",
-    "serverUnreachable": "バックエンド未起動。worldseed play で起動してください。",
+    "serverUnreachable": "バックエンド未起動。サーバーを起動してください。",
     "live": "ライブ",
     "ticks": "Tick",
     "dm": "DM"
@@ -191,7 +191,7 @@
     "finalEdition": "最終版",
     "dramatis": "登場人物",
     "eventTicker": "イベント速報",
-    "publication": "WorldSeed刊行",
+    "publication": "Genesis 刊行",
     "moreCount": "+{{count}}件",
     "editorial": "社説",
     "generateTooltip": "この実行の新聞まとめを生成",

@@ -1,5 +1,5 @@
 {
-  "brand": "WORLDSEED",
+  "brand": "GENESIS",
   "subtitle": "Motor de Mundo Persistente",
   "connecting": "Conectando...",
   "lobby": {
@@ -24,7 +24,7 @@
     "clickToEnter": "Entrar al panel",
     "pastRuns": "Ejecuciones Anteriores",
     "noPastRuns": "Sin ejecuciones anteriores.",
-    "serverUnreachable": "Backend no iniciado. Ejecuta worldseed play.",
+    "serverUnreachable": "Backend no iniciado. Inicia primero el servidor.",
     "live": "EN VIVO",
     "ticks": "ticks",
     "dm": "DM"
@@ -191,7 +191,7 @@
     "finalEdition": "Edición Final",
     "dramatis": "Personajes",
     "eventTicker": "Noticias",
-    "publication": "Una Publicación WorldSeed",
+    "publication": "Una Publicación Genesis",
     "moreCount": "+{{count}} más",
     "editorial": "Editorial",
     "generateTooltip": "Generar resumen periodístico",

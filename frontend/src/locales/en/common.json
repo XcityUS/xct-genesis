@@ -1,5 +1,5 @@
 {
-  "brand": "WORLDSEED",
+  "brand": "GENESIS",
   "subtitle": "Persistent World Engine",
   "connecting": "Connecting...",
   "lobby": {
@@ -24,7 +24,7 @@
     "clickToEnter": "Click to enter dashboard",
     "pastRuns": "Past Runs",
     "noPastRuns": "No past runs yet.",
-    "serverUnreachable": "Backend not running. Start with worldseed play.",
+    "serverUnreachable": "Backend not running. Start the server first.",
     "live": "LIVE",
     "ticks": "ticks",
     "dm": "DM"
@@ -194,7 +194,7 @@
     "finalEdition": "Final Edition",
     "dramatis": "Dramatis Personae",
     "eventTicker": "Event Ticker",
-    "publication": "A WorldSeed Publication",
+    "publication": "A Genesis Publication",
     "moreCount": "+{{count}} more",
     "editorial": "Editorial",
     "generateTooltip": "The Daily Seed — your world in print",
