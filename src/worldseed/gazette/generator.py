@@ -27,11 +27,16 @@ async def generate_gazette(
     import instructor
     import litellm
 
+    from worldseed.dm.routing import resolve_litellm_call
+
     client = instructor.from_litellm(litellm.acompletion, mode=instructor.Mode.JSON)
+
+    # Route xcity/<id> to tokenhub with explicit credentials (same as the DM).
+    api_model, extra = resolve_litellm_call(model)
 
     start = time.monotonic()
     result = await client.chat.completions.create(
-        model=model,
+        model=api_model,
         response_model=GazetteContent,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -39,6 +44,7 @@ async def generate_gazette(
         ],
         max_retries=max_retries,
         timeout=timeout,
+        **extra,
     )
     elapsed = time.monotonic() - start
 

@@ -8,29 +8,17 @@ from typing import Any
 import structlog
 from fastapi import APIRouter, FastAPI
 
+from worldseed.dm.routing import xcity_credentials
 from worldseed.server.websocket import ConnectionManager
 
 log = structlog.get_logger()
 
 DEFAULT_DM_MODEL = ""
-TOKENHUB_DEFAULT_BASE = "https://tokenhub.xcity.one/v1"
 
 
 def _get_default_dm_model() -> str:
     """Return default DM model from env or built-in fallback."""
     return os.environ.get("WORLDSEED_DM_MODEL", DEFAULT_DM_MODEL)
-
-
-def xcity_credentials() -> tuple[str, str] | None:
-    """Return (api_key, base_url) when the xcity tokenhub provider is configured.
-
-    Independent of ``OPENAI_API_KEY`` so stock OpenAI can be configured alongside.
-    """
-    key = os.environ.get("XCT_TOKENHUB_API_KEY", "").strip()
-    if not key:
-        return None
-    base = os.environ.get("XCT_TOKENHUB_API_BASE", "").strip() or TOKENHUB_DEFAULT_BASE
-    return key, base
 
 
 def _custom_openai_base() -> str:
