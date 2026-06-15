@@ -105,8 +105,8 @@ jobs:
             --ignore=tests/browser \
             --ignore=tests/stress \
             --ignore=tests/manual \
-            --maxfail=5 \
-            --tb=short
+            --tb=short \
+            -ra
 
   build:
     name: Build (uv build)
