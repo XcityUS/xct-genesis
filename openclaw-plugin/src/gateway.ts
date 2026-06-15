@@ -23,9 +23,14 @@ import type {
   ChannelGatewayContext,
   OpenClawConfig,
 } from "openclaw/plugin-sdk";
+// dispatchInboundReplyWithBase was dropped from the top-level plugin-sdk barrel
+// in openclaw 2026.4.x (compat now returns undefined → "is not a function" at
+// runtime). It is still re-exported, with an identical signature, from the
+// channel-bundle subpath below on BOTH the Railway-pinned 2026.3.13 and the
+// newer 2026.4.2 — so this import works across both versions unchanged.
 import {
   dispatchInboundReplyWithBase,
-} from "openclaw/plugin-sdk";
+} from "openclaw/plugin-sdk/irc";
 import type { WorldSeedAccount } from "./channel.js";
 import { ConnectionBridge } from "./connection.js";
 
