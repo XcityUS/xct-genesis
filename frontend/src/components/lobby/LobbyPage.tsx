@@ -111,7 +111,7 @@ export default function LobbyPage() {
       <div className="absolute top-4 right-4">
         <LanguageSelect />
       </div>
-      <div className="setup-brand">WORLD<em>SEED</em></div>
+      <div className="setup-brand">{t('brand')}</div>
       <div className="setup-subtitle">{t('subtitle')}</div>
 
       <div className="setup-card">

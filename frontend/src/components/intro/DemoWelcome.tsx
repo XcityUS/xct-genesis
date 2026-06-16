@@ -32,7 +32,7 @@ export default function DemoWelcome({ onSelect }: Props) {
 
       <div className="relative z-10 flex flex-col items-center">
         {/* Brand — matches .setup-brand */}
-        <div className="setup-brand">WORLD<em>SEED</em></div>
+        <div className="setup-brand">GENESIS</div>
 
         {/* Subtitle — matches .setup-subtitle */}
         <div className="setup-subtitle">Persistent World Engine</div>
