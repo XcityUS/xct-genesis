@@ -4,7 +4,7 @@ scene:
   dm_knowledge: "KWH 是城市单一货币：1㎡ 光伏地 = 100 KWH ≈ 10 USDC。1 Acre 光伏项目 = 50,000 KWH。基础农业 Agent 月费 50 KWH。光伏发电直接铸造 KWH，是城市最重要的产出。土地使用权以 NFT 表示。光合农业区昼夜晴朗，光伏出力强；矿业区位于山地。"
   tick_narrative_time: "约一小时"
   tick_interval: 5
-  max_ticks: 60
+  max_ticks: null  # unlimited — story runs continuously (resumes across redeploys)
 
 entities:
   # ── 九大功能分区 (XCITY 产品设计 §6.1) ──────────────────────
