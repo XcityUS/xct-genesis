@@ -79,7 +79,7 @@ export default function HeaderBar() {
           </Tooltip>
 
           <span className="select-none font-[family-name:var(--font-display)] text-sm font-semibold tracking-[0.12em] text-foreground">
-            WORLDSEED
+            {t('brand')}
           </span>
 
           <Tooltip>

@@ -31,7 +31,7 @@ export default function DemoHeader() {
 
         <div className="flex items-center gap-3">
           <span className="select-none font-[family-name:var(--font-display)] text-sm font-semibold tracking-[0.12em] text-foreground">
-            WORLDSEED
+            {t('brand')}
           </span>
 
           <Tooltip>
