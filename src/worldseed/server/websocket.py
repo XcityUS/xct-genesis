@@ -181,6 +181,44 @@ async def _ping_loop(conn: GatewayConnection) -> None:
             return
 
 
+async def _auto_initial_wakes(
+    app: Any,
+    engine: WorldEngine,
+    conn: GatewayConnection,
+    agents_ready: set[str] | None,
+) -> None:
+    """Send ``send_initial_wakes`` to a freshly-connected gateway when the world
+    is still waiting for its preset agents to register.
+
+    The external openclaw-runtime gateway frequently connects more than 30s
+    after the server boots (both Railway services redeploy at once), by which
+    point tick_resume's timed one-shot wake has already given up — leaving every
+    agent stuck "pending" until someone manually hits /api/agents/connect. This
+    fires on the gateway-connected event instead of racing a fixed timeout.
+
+    Idempotent via ``app.state.initial_wakes_sent`` (reset per world in
+    world.py / app.py), and gated on there being at least one preset agent not
+    yet registered, so a reconnect to an already-live world never re-wakes it.
+    """
+    await asyncio.sleep(2.0)  # let the gateway finish processing auth_ok (write files, bind)
+    try:
+        if getattr(app.state, "initial_wakes_sent", False):
+            return
+        expected = engine.registry.expected_agent_ids()
+        pending = expected - set(agents_ready or ())
+        if not pending:
+            return  # all preset agents already registered
+        app.state.initial_wakes_sent = True  # optimistic set — coordinates with tick_resume
+        await conn.send({"type": "send_initial_wakes"})
+        log.info("ws_initial_wakes_auto_sent", gateway=conn.gateway_id, pending=sorted(pending))
+    except Exception:
+        log.warning("ws_initial_wakes_auto_failed", gateway=conn.gateway_id, exc_info=True)
+        try:
+            app.state.initial_wakes_sent = False  # roll back so a later gateway can retry
+        except Exception:
+            pass
+
+
 async def handle_ws(
     ws: WebSocket,
     engine: WorldEngine,
@@ -188,6 +226,7 @@ async def handle_ws(
     run_id: str = "",
     agents_ready: set[str] | None = None,
     tick_runner: Any | None = None,
+    app: Any | None = None,
 ) -> None:
     """Handle one WebSocket connection lifecycle."""
     from worldseed.server.routes._shared import DEFAULT_GATEWAY_TOKEN
@@ -225,11 +264,17 @@ async def handle_ws(
         manager.add(conn)
         log.info("ws_gateway_authenticated", gateway=gateway_id)
 
-        # Initial wakes are NOT sent here. They are sent by:
-        # - tick_resume (gm.py) when ticks start
-        # - /api/agents/connect when dashboard triggers connection
-        # - run_switched handler for resume
-        # Sending wakes from auth_ok caused duplicates with every other source.
+        # Initial wakes: a one-shot send_initial_wakes is also triggered by
+        # tick_resume (gm.py) and /api/agents/connect. Those race a fixed
+        # timeout against the external gateway's connect time; this event-driven
+        # path fires when the gateway actually connects, so agents come online
+        # automatically after a redeploy without a manual /api/agents/connect.
+        # All paths coordinate through app.state.initial_wakes_sent.
+        if app is not None and tick_runner is not None:
+            asyncio.create_task(
+                _auto_initial_wakes(app, engine, conn, agents_ready),
+                name="auto_initial_wakes",
+            )
 
     except (json.JSONDecodeError, WebSocketDisconnect):
         return
