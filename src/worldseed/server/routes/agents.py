@@ -177,4 +177,5 @@ def register_websocket(app: FastAPI, ws_manager: ConnectionManager) -> None:
             app.state.run_id,
             agents_ready=app.state.agents_ready,
             tick_runner=getattr(app.state, "tick_runner", None),
+            app=app,
         )

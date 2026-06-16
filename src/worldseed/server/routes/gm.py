@@ -125,17 +125,23 @@ def create_gm_router(app: FastAPI, ws_manager: ConnectionManager) -> APIRouter:
             if tr.connector is not None and not app.state.initial_wakes_sent:
                 import asyncio
 
-                app.state.initial_wakes_sent = True
-
                 async def _initial_wake() -> None:
                     for _ in range(60):
                         if len(ws_manager._gateways) > 0:
                             break
                         await asyncio.sleep(0.5)
                     else:
+                        # No gateway within the window — leave initial_wakes_sent
+                        # False so the gateway-auth path (websocket.py) can send
+                        # the wakes whenever the external gateway finally connects.
                         log.warning("gateway_connect_timeout")
                         return
                     await asyncio.sleep(1.0)
+                    # Set the flag only once a gateway is actually present, and
+                    # bail if the gateway-auth path already sent (coordination).
+                    if app.state.initial_wakes_sent:
+                        return
+                    app.state.initial_wakes_sent = True
                     # Use config agent IDs — agents may not be registered in engine yet
                     # (they register themselves via plugin worldseed_register).
                     agents = [a.id for a in engine.config.agents]
