@@ -83,5 +83,11 @@ else
     fi
 fi
 
+# Auto-resume the most recent saved run so the story survives redeploys.
+# Runs in the background: waits for the server, then resumes the latest run via
+# the API (no-op when there is no resumable run — first boot stays in lobby).
+# Requires a persistent volume at ~/.worldseed, else run data is wiped per deploy.
+( uv run python /app/resume_latest.py ) &
+
 # lobby mode — dashboard-first, users configure via UI
 exec uv run worldseed --host 0.0.0.0 --port "${LISTEN_PORT}"

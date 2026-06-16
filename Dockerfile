@@ -47,6 +47,7 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
 # ── Entrypoint
 COPY scripts/docker-entrypoint.sh /app/
+COPY scripts/resume_latest.py /app/
 RUN chmod +x /app/docker-entrypoint.sh
 
 # Railway injects PORT; default 8000 for local testing
