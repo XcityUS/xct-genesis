@@ -228,6 +228,10 @@ export default function LobbyPage() {
           onEnter={enterDashboard}
         />
       </div>
+
+      <footer className="setup-footer">
+        <a href="https://xcity.one" target="_blank" rel="noreferrer">xcity.one</a>
+      </footer>
     </div>
   )
 }
