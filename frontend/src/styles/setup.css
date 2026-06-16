@@ -33,6 +33,24 @@
   margin-bottom: 32px;
 }
 
+.setup-footer {
+  margin-top: auto;
+  padding-top: 36px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--ghost);
+}
+
+.setup-footer a {
+  color: var(--ghost);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.setup-footer a:hover { color: var(--amber); }
+
 .setup-card {
   background: var(--bg-panel);
   border: 1px solid var(--border);
