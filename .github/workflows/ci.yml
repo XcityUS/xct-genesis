@@ -1,0 +1,150 @@
+name: CI
+
+# xct-genesis is a fork of AIScientists-Dev/WorldSeed. As of 2026-06-22
+# XcityUS/xct-genesis still had 0 .github/workflows/ files on main despite
+# 22+ commits/30d, so all quality gates (lint + test + build) ran by hand
+# on developer machines.
+#
+# This workflow adds the canonical gates from CLAUDE.md and
+# .pre-commit-config.yaml: ruff (lint + format), pytest (full suite
+# minus browser/stress/manual), and uv build (wheel + sdist).
+#
+# Triggers: push to main, PRs targeting main, manual dispatch.
+# The PR trigger lets the workflow gate merges; the push trigger
+# is the safety net for direct commits.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same ref so a new push doesn't
+# queue behind a stale run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege: this workflow only needs to read the repo and
+# write the GitHub Actions cache (implicit). No secrets required.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.2"
+
+      - name: Setup Python
+        run: uv python install 3.11
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: ruff check
+        # Matches .pre-commit-config.yaml local hook: `uv run ruff check`.
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        # Matches .pre-commit-config.yaml local hook: `uv run ruff format --check`.
+        run: uv run ruff format --check .
+
+  test:
+    name: Test (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.2"
+
+      - name: Setup Python
+        run: uv python install 3.11
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Run pytest
+        # pyproject.toml sets addopts = "-n auto" (pytest-xdist) so this
+        # auto-parallelises across cores. We ignore tests/{browser,stress,manual}:
+        #   - browser/ needs Playwright browsers (~300MB download) and a frontend
+        #     build — out of scope for the lint+test+build gate.
+        #   - stress/ has long-running adversarial + scaling tests.
+        #   - manual/ is for human-driven smoke testing.
+        # E2E tests (tests/e2e/) spin up uvicorn in-process via fixtures and
+        # are fast and deterministic, so they're included.
+        run: |
+          uv run pytest \
+            --ignore=tests/browser \
+            --ignore=tests/stress \
+            --ignore=tests/manual \
+            --tb=short \
+            -ra
+
+  build:
+    name: Build (uv build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.2"
+
+      - name: Setup Python
+        run: uv python install 3.11
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Build wheel + sdist
+        # uv build uses hatchling (per pyproject.toml build-system) and
+        # produces dist/worldseed-0.1.0-py3-none-any.whl and .tar.gz.
+        # Uploads as workflow artifact for inspection.
+        run: uv build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
