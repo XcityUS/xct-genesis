@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dm = [
-    "litellm>=1.60,<2",
+    "litellm>=1.88.6,<2",
     "instructor>=1.7,<2",
 ]
 
